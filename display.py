@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -22,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.join(HERE, "turing-smart-screen-python")
 sys.path.insert(0, LIB_DIR)
 
-from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation  # noqa: E402
+from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation, SubRevision  # noqa: E402
 
 import ccusage_client as cc  # noqa: E402
 import usage_client as uc  # noqa: E402
@@ -63,14 +64,21 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
     print(f"[display] Свързвам Rev A на {port}...")
     lcd = LcdCommRevA(com_port=port, display_width=WIDTH, display_height=HEIGHT)
     lcd.Reset()
-    # След replug CH340 мостът е готов, но screen MCU-то още буутва -> flush на
-    # серийните буфери, за да чете _hello чисто (иначе HELLO се разминава -> blur/portrait).
-    try:
-        lcd.lcd_serial.reset_input_buffer()
-        lcd.lcd_serial.reset_output_buffer()
-    except Exception:
-        pass
-    lcd.InitializeComm()
+    # След replug дисплеят cold-boot-ва: CH340 мостът е готов преди screen MCU-то.
+    # Retry-ваме HELLO докато не върне ВАЛИДЕН отговор — това едновременно изчаква
+    # boot-а И гарантира byte-alignment на протокола (иначе HELLO се чете разместен
+    # -> всички следващи команди са офсетнати -> размазан кадър в portrait).
+    for attempt in range(10):
+        try:
+            lcd.lcd_serial.reset_input_buffer()
+            lcd.lcd_serial.reset_output_buffer()
+        except Exception:
+            pass
+        lcd.InitializeComm()  # _hello -> сетва lcd.sub_revision
+        if lcd.sub_revision == SubRevision.USBMONITOR_3_5:
+            break
+        print(f"[display] HELLO не е синхронизиран (опит {attempt + 1}/10) — изчаквам boot...")
+        time.sleep(2)
     lcd.SetBrightness(level=BRIGHTNESS)
     lcd.Clear()  # вътрешно връща PORTRAIT
     lcd.SetOrientation(orientation=Orientation.LANDSCAPE)  # 480x320
