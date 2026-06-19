@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# turing-smart-screen-python (cloned as dependency, not committed)
+turing-smart-screen-python/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local troubleshooting tools (Sysinternals handle, dumps)
+work/tools/
+
+# Logs (turing-smart-screen logger writes log.log)
+*.log
