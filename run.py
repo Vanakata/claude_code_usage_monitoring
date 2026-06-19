@@ -113,6 +113,16 @@ def main() -> int:
                 d.render(lcd, usage, snap)
                 print(f"[run] обновено: 5h {usage.five_hour.utilization:.0f}% "
                       f"wk {usage.seven_day.utilization:.0f}%")
+                if getattr(lcd, "_needs_reinit", False):
+                    # имаше serial reopen насред кадъра (вероятно разместен) ->
+                    # чист пълен reconnect ВЕДНАГА, без да чакаме интервала
+                    print("[run] serial reopen открит — чист reconnect", file=sys.stderr)
+                    try:
+                        lcd.closeSerial()
+                    except Exception:
+                        pass
+                    lcd = None
+                    continue
             except uc.UsageError as exc:
                 print(f"[run] usage грешка (пропускам цикъл): {exc}", file=sys.stderr)
             except Exception as exc:  # serial/render -> reconnect

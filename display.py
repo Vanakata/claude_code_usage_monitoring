@@ -63,25 +63,34 @@ def _bar_color(pct: float) -> tuple:
     return GREEN
 
 
-def _strict_write_line(self, line: bytes) -> None:
-    """Замества библиотечния WriteLine: БЕЗ скрит reopen-retry.
+def _resilient_write_line(self, line: bytes) -> None:
+    """WriteLine с reopen+resend (като оригинала) НО маркира за пълен re-init.
 
-    Оригиналът при SerialException тихо reopen-ва порта и доизпраща chunk-а
-    насред трансфера -> разместен (garbled) кадър без грешка нагоре. Тук пускаме
-    грешката да изхвърчи, за да направи run.py пълен чист reconnect (HELLO-resync).
-    SerialTimeoutException ("too fast") си остава толерирана.
+    Защо: при serial срив оригиналът reopen-ва насред bitmap и продължава ->
+    кадърът се ДОВЪРШВА (иначе остава бял/недорисуван), но е разместен. Затова
+    вдигаме `_needs_reinit` -> run.py прави чист пълен reconnect веднага след кадъра
+    (HELLO-resync + Clear + orientation) -> следващият кадър е чист.
+    Ако устройството наистина го няма, openSerial/resend ще гръмнат -> грешката
+    изхвърча -> run.py пак прави reconnect.
     """
     try:
         self.serial_write(line)
     except serial.SerialTimeoutException:
-        pass  # твърде бързо — пропускаме, не е разкачане
+        pass  # твърде бързо — толерираме
+    except serial.SerialException:
+        self._needs_reinit = True
+        self.closeSerial()
+        time.sleep(1)
+        self.openSerial()       # ако портът го няма -> raise -> run.py reconnect
+        self.serial_write(line)  # ако и това гръмне -> raise -> run.py reconnect
 
 
 def connect(port: str = COM_PORT) -> LcdCommRevA:
     print(f"[display] Свързвам Rev A на {port}...")
     lcd = LcdCommRevA(com_port=port, display_width=WIDTH, display_height=HEIGHT)
-    # изключваме скрития reopen-retry на библиотеката (виж _strict_write_line)
-    lcd.WriteLine = types.MethodType(_strict_write_line, lcd)
+    lcd._needs_reinit = False
+    # reopen+resend, но с маркер за чист re-init след кадъра (виж _resilient_write_line)
+    lcd.WriteLine = types.MethodType(_resilient_write_line, lcd)
     lcd.Reset()
     # След replug дисплеят cold-boot-ва: CH340 мостът е готов преди screen MCU-то.
     # Retry-ваме HELLO докато не върне ВАЛИДЕН отговор — това едновременно изчаква
