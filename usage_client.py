@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -27,6 +28,9 @@ from typing import Optional
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
 OAUTH_BETA = "oauth-2025-04-20"
+# OAuth refresh (стойности от Claude Code extension.js)
+TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
+CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 
 class UsageError(RuntimeError):
@@ -52,15 +56,60 @@ class Usage:
     generated_at: datetime
 
 
-def _read_token() -> str:
+def _read_creds() -> dict:
     try:
-        cred = json.load(open(CREDENTIALS_PATH, encoding="utf-8"))
+        return json.load(open(CREDENTIALS_PATH, encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise UsageError(f"не мога да чета {CREDENTIALS_PATH}: {exc}") from exc
-    tok = (cred.get("claudeAiOauth") or {}).get("accessToken")
+
+
+def _read_token() -> str:
+    tok = (_read_creds().get("claudeAiOauth") or {}).get("accessToken")
     if not tok:
         raise UsageError("няма claudeAiOauth.accessToken в credentials (логнат ли си в Claude?)")
     return tok
+
+
+def refresh_token() -> str:
+    """Refresh-ва OAuth access token-а през TOKEN_URL и презаписва credentials.
+
+    За 24/7 standalone (без пуснат Claude Code) access token-ът изтича; това
+    го подновява с refresh_token-а от credentials.
+    """
+    cred = _read_creds()
+    oauth = cred.get("claudeAiOauth") or {}
+    rt = oauth.get("refreshToken")
+    if not rt:
+        raise UsageError("няма refreshToken в credentials — не мога да refresh-на")
+    scopes = oauth.get("scopes") or []
+    body = json.dumps({
+        "grant_type": "refresh_token",
+        "refresh_token": rt,
+        "client_id": CLIENT_ID,
+        "scope": " ".join(scopes),
+    }).encode()
+    req = urllib.request.Request(TOKEN_URL, data=body,
+                                 headers={"Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            tok = json.load(resp)
+    except urllib.error.HTTPError as exc:
+        raise UsageError(f"token refresh неуспешен: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise UsageError(f"token refresh мрежова грешка: {exc.reason}") from exc
+
+    oauth["accessToken"] = tok["access_token"]
+    oauth["refreshToken"] = tok.get("refresh_token", rt)
+    oauth["expiresAt"] = int(time.time() * 1000) + int(tok.get("expires_in", 0)) * 1000
+    if tok.get("scope"):
+        oauth["scopes"] = tok["scope"].split(" ")
+    cred["claudeAiOauth"] = oauth
+    # атомарен запис -> без риск от corrupt при паралелен Claude Code refresh
+    tmp = CREDENTIALS_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cred, f)
+    os.replace(tmp, CREDENTIALS_PATH)
+    return oauth["accessToken"]
 
 
 def _parse_window(obj: Optional[dict]) -> UsageWindow:
@@ -76,9 +125,7 @@ def _parse_window(obj: Optional[dict]) -> UsageWindow:
     return UsageWindow(utilization=float(util) if util is not None else 0.0, resets_at=dt)
 
 
-def fetch_usage() -> Usage:
-    """Дърпа реалните rate-limit данни (без кеш)."""
-    token = _read_token()
+def _get_usage(token: str) -> dict:
     req = urllib.request.Request(
         USAGE_URL,
         headers={
@@ -87,13 +134,25 @@ def fetch_usage() -> Usage:
             "anthropic-beta": OAUTH_BETA,
         },
     )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.load(resp)
+
+
+def fetch_usage() -> Usage:
+    """Дърпа реалните rate-limit данни (без кеш). На 401 → refresh → retry."""
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = json.load(resp)
+        data = _get_usage(_read_token())
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
-            raise UsageError("401 — token изтекъл (Claude Code refresh-ва го; пусни Claude)") from exc
-        raise UsageError(f"HTTP {exc.code} от /api/oauth/usage") from exc
+            token = refresh_token()  # token изтекъл -> подновяваме и опитваме пак
+            try:
+                data = _get_usage(token)
+            except urllib.error.HTTPError as exc2:
+                raise UsageError(f"HTTP {exc2.code} от /api/oauth/usage (след refresh)") from exc2
+            except urllib.error.URLError as exc2:
+                raise UsageError(f"мрежова грешка (след refresh): {exc2.reason}") from exc2
+        else:
+            raise UsageError(f"HTTP {exc.code} от /api/oauth/usage") from exc
     except urllib.error.URLError as exc:
         raise UsageError(f"мрежова грешка: {exc.reason}") from exc
 

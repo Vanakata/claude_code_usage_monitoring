@@ -9,22 +9,15 @@
 
 - **POC: display handshake** — `poc/display-handshake` (6cec590). Свети. Блокер: `TURMO.exe` граби COM5 (виж README).
 - **ccusage data layer** — `feat/ccusage-source` (6627fc6). `ccusage_client.py`.
-- **Layout + реални /usage данни + matrix фон** — `feat/display-layout`. `display.py` рисува 5H/WK gauge с РЕАЛНИТЕ `/usage` % (reverse-engineer-нат `/api/oauth/usage`, виж `usage_client.py`) + SESSION cost/tokens, върху matrix background. Approximation подходът беше изоставен (лимитът тежи по модел; виж README).
+- **Layout + реални /usage данни + matrix фон** — `feat/display-layout` (3ab32c1). `display.py` + `usage_client.py` (reverse-engineer-нат `/api/oauth/usage`).
+- **Refresh loop + автостарт** — `feat/refresh-loop`. `run.py` (loop с TURMO kill + reconnect + token refresh на 401), `tools/start.cmd` + `tools/install_autostart.ps1` (Scheduled Task, elevated). README документирано.
 
 ---
 
-## Refresh loop + автостарт (АКТИВНА)
+## Опашка (празна — проектът е функционален end-to-end)
 
-Контекст: `display.py` сега прави само `render_once()` (един кадър). Трябва да върти и да тръгва сам на boot.
-
-Scope:
-- Loop: `fetch usage + ccusage → render → sleep 30–60s → пак`. Конфигуруем интервал (env). Не гърми при временна грешка (network/ccusage) — лог + продължава.
-- **TURMO.exe** при старт: убива го (elevated) преди да хване COM5, иначе портът е зает.
-- **Token refresh** за `/api/oauth/usage`: access token-ът изтича. Ако 401 → refresh през `POST /v1/oauth/token` с refresh_token от credentials (grant `refresh_token`, header `anthropic-beta: oauth-2025-04-20,...`), презаписва credentials. (Виж extension.js: `qw="/v1/oauth/token"`.)
-- Автостарт: Task Scheduler или startup (elevated, заради TURMO kill). Документация в README.
-
-DoD: пуснат веднъж, дисплеят се обновява на всеки 30–60s с пресни данни; преживява прекъсване на мрежата; тръгва сам след reboot; commit на нов branch.
-
-<!--
-ОПАШКА: (нищо засега)
--->
+Възможни бъдещи подобрения (не приоритетни):
+- Регистрация на autostart task-а (изисква elevated; инсталаторът е готов).
+- Втори екран/изгледи (седмичен график от ccusage daily history).
+- Алармен цвят/мигане при висок % (вече има цветови прагове в gauge-а).
+- По-стабилен fallback ако `/api/oauth/usage` се счупи на Claude Code ъпдейт.

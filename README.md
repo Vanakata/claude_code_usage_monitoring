@@ -78,3 +78,20 @@ Turing-ската vendor app **`TURMO.exe`** (TURING MOnitor) auto-start-ва и
 ⚠️ `/api/oauth/usage` е **недокументиран** endpoint (reverse-engineer-нат от Claude Code `extension.js`). Дава точните `/usage` % — за разлика от ccusage approximation, защото лимитът тежи по модел вътрешно. Може да се счупи на Claude Code ъпдейт. Token-ът изтича; Claude Code го refresh-ва, иначе ще трябва собствен refresh през `/v1/oauth/token`.
 
 Фонът се генерира с `tools/gen_background.py` (matrix / code / circuit варианти).
+
+## Refresh loop + автостарт
+
+```bash
+./.venv/Scripts/python.exe run.py    # върти: fetch -> render -> sleep
+```
+
+Loop-ът обновява дисплея на всеки `CLAUDE_USAGE_INTERVAL` секунди (default 60). Преживява временни грешки (network/ccusage/usage — лог + пази стария кадър), reconnect-ва при serial проблем, и **убива TURMO.exe** ако се върне и грабне COM5. Token-ът се refresh-ва автоматично на 401 (виж `usage_client.refresh_token`).
+
+**Автостарт (Windows, на logon, elevated):** от **elevated** PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\install_autostart.ps1
+Start-ScheduledTask -TaskName ClaudeUsageDisplay   # стартирай веднага
+```
+
+Task-ът трябва да е **elevated** (Highest), иначе не може да убие protected `TURMO.exe`. Логове: `work\run.log`. Махане: `Unregister-ScheduledTask -TaskName ClaudeUsageDisplay -Confirm:$false`.
