@@ -5,21 +5,27 @@
 Контекст / Scope / DoD. Следващите се добавят след одобрение на предишната.
 -->
 
-## POC — запали дисплея (hardware handshake)
+## ✅ DONE — POC: запали дисплея (hardware handshake)
 
-Контекст: преди каквато и да е логика трябва да докажем, че комуникацията с дисплея работи. Хардуерът е разузнат (виж README): Turing Smart Screen **Revision A**, 3.5" (480×320), на **COM5**, CH340 serial (`VID_1A86/PID_5722`). Грешна ревизия/порт = черен екран без грешка, затова това е стъпка нула — еквивалент на scaffold/verification.
+Светна на branch `poc/display-handshake` (commit 6cec590). Блокерът се оказа vendor app `TURMO.exe`, която граби COM5 (protected процес — иска elevated taskkill). Подробности в README "COM5 е зает".
+
+---
+
+## ccusage data layer (АКТИВНА)
+
+Контекст: POC-ът светна със статичен "42". Сега правим слоя, който вади реални Claude usage данни от `ccusage`. САМО data слой — layout на дисплея и refresh loop са отделни PR-и след това.
 
 Scope:
-- Setup Python 3.9+ venv в repo-то; `pip install` зависимостите на `mathoudebine/turing-smart-screen-python` (clone-ни го локално — вече е в `.gitignore`).
-- Конфигурирай за **Revision A** + **COM5** (в библиотеката: `REVISION: A`, `COM_PORT: COM5`, или директно през `LcdCommRevA`).
-- Минимален скрипт `poc.py`: инициализирай дисплея, изчисти екрана, покажи **статичен текст + едно число** (напр. "CLAUDE USAGE" + някаква стойност) на 480×320.
-- НЕ свързвай ccusage още — целта е само да светне правилно.
+- `ccusage_client.py`: subprocess към `ccusage blocks --json` + `daily --json`, парс в dataclass-ове.
+- Метрики: активен 5h блок (costUSD, totalTokens, % изтекло от прозореца по време, projection.totalCost, remainingMinutes, burnRate), днес (totalCost/totalTokens от `daily`), седмица (sum последни 7 дни).
+- CustomDataSource-съвместими класове (`as_numeric`/`as_string`/`last_values`) за headline метриките — да се консумират от layout задачата.
+- Graceful handling: ccusage липсва (FileNotFoundError), няма активен блок (между сесии), празен/невалиден JSON.
+- `__main__`: принтва четлив snapshot за верификация без дисплей.
 
-DoD: при `python poc.py` дисплеят на COM5 показва четим статичен текст/число (потвърждава Rev A протокол + порт); кратко README обновяване как се пуска; commit на branch `poc/display-handshake`.
+DoD: `python ccusage_client.py` принтва реални парснати метрики; не гърми при no-active-block; commit на branch `feat/ccusage-source`. НЕ се закача за дисплея още.
 
 <!--
-ОПАШКА (добави след като POC светне):
-- ccusage integration — parse `ccusage blocks --json` + `daily --json`, мапни в CustomDataSource
-- Layout/theme — 5h limit %, weekly %, session tokens/cost на 480×320
-- Refresh loop 30–60s + автостарт (Task Scheduler / startup)
+ОПАШКА:
+- Layout/theme — 5h %, weekly %, session tokens/cost на 480×320 (консумира ccusage_client)
+- Refresh loop 30–60s + автостарт (Task Scheduler / startup); + handle TURMO.exe (autostart kill / exclusion)
 -->
