@@ -5,19 +5,37 @@
 Контекст / Scope / DoD. Следващите се добавят след одобрение на предишната.
 -->
 
-## ✅ DONE
+## 🔖 HANDOFF (къде сме — 2026-06-20, късно)
 
-- **POC: display handshake** — `poc/display-handshake` (6cec590). Свети. Блокер: `TURMO.exe` граби COM5 (виж README).
-- **ccusage data layer** — `feat/ccusage-source` (6627fc6). `ccusage_client.py`.
-- **Layout + реални /usage данни + matrix фон** — `feat/display-layout` (3ab32c1). `display.py` + `usage_client.py` (reverse-engineer-нат `/api/oauth/usage`).
-- **Refresh loop + автостарт** — `feat/refresh-loop`. `run.py` (loop с TURMO kill + reconnect + token refresh на 401), `tools/start.cmd` + `tools/install_autostart.ps1` (Scheduled Task, elevated). README документирано.
+Проектът е **функционален end-to-end** и качен на GitHub (`master`, последен `ef64cab`).
+Върви като Scheduled Task `ClaudeUsageDisplay` (на тая машина, elevated, AtLogOn).
+
+**Текущо състояние:** `/api/oauth/usage` връща **HTTP 429** (rate-limit от многото тестови
+рестарти, НЕ е бъг). Затова дисплеят показва `5H --% / WK --%`. Кодът кешира и **сам**
+попълва реалните числа при първото успешно дърпане — само трябва да падне 429-цата.
+
+**Да се потвърди утре:**
+1. 429 паднала ли е → реалните % върнаха ли се сами? (виж `work/run.log` или монитора)
+2. Дръпни/върни кабела → очаквано: най-много 1 разместен кадър, после чист; **никога бял екран**.
+
+**Фиксове от тая сесия (reconnect устойчивост):** AUTO порт по VID/PID, preflight преди
+connect, HELLO-resync, `_resilient_write_line` (reopen+resend + `_needs_reinit`),
+always-render с кеш (екранът винаги рисува, дори без данни). Виж git log.
+
+**Капани (важни за setup на лаптопа):**
+- `TURMO.exe` (Turing vendor app) граби COM5 — protected, иска **elevated** taskkill.
+- библиотечният `openSerial` прави `os._exit(0)` при липсващ/зает порт → затова preflight-ваме.
+- Pro лимитът тежи **по модел** (Opus яде бързо) → ccusage approximation е невъзможна;
+  затова четем реалния `/usage` от `/api/oauth/usage` (виж README).
+
+**Продължаване от лаптопа:** `git clone` + setup от README. NB: ще показва usage-а на
+акаунта в Claude Code на ОНАЗИ машина.
 
 ---
 
-## Опашка (празна — проектът е функционален end-to-end)
+## Опашка (опционални)
 
-Възможни бъдещи подобрения (не приоритетни):
-- Регистрация на autostart task-а (изисква elevated; инсталаторът е готов).
-- Втори екран/изгледи (седмичен график от ccusage daily history).
-- Алармен цвят/мигане при висок % (вече има цветови прагове в gauge-а).
-- По-стабилен fallback ако `/api/oauth/usage` се счупи на Claude Code ъпдейт.
+- Verify replug self-heal след като 429 падне (виж по-горе).
+- Лек backoff при 429, за да не хамерим (сега просто кешира — ок).
+- `.exe` пакет (PyInstaller) за лесно местене без clone/Python.
+- Втори изглед (седмичен график от ccusage daily), аларма при висок %.
