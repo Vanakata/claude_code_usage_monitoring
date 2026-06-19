@@ -28,7 +28,9 @@ import ccusage_client as cc  # noqa: E402
 import usage_client as uc  # noqa: E402
 
 # --- Hardware (виж README) ---
-COM_PORT = os.environ.get("CLAUDE_USAGE_COM_PORT", "COM5")
+# AUTO -> библиотеката намира устройството по VID/PID (USB35INCHIPSV2 / 1A86:5722),
+# та преживява смяна на COM номера при ново включване. Override с env при нужда.
+COM_PORT = os.environ.get("CLAUDE_USAGE_COM_PORT", "AUTO")
 BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_BRIGHTNESS", "15"))
 WIDTH, HEIGHT = 320, 480  # portrait dims; landscape -> 480x320 след SetOrientation
 
@@ -57,9 +59,9 @@ def _bar_color(pct: float) -> tuple:
     return GREEN
 
 
-def connect() -> LcdCommRevA:
-    print(f"[display] Свързвам Rev A на {COM_PORT}...")
-    lcd = LcdCommRevA(com_port=COM_PORT, display_width=WIDTH, display_height=HEIGHT)
+def connect(port: str = COM_PORT) -> LcdCommRevA:
+    print(f"[display] Свързвам Rev A на {port}...")
+    lcd = LcdCommRevA(com_port=port, display_width=WIDTH, display_height=HEIGHT)
     lcd.Reset()
     lcd.InitializeComm()
     lcd.SetBrightness(level=BRIGHTNESS)
