@@ -57,3 +57,24 @@ Turing-ската vendor app **`TURMO.exe`** (TURING MOnitor) auto-start-ва и
 Преди да пуснеш POC-а, убий я (или я махни от autostart). Същото важи и за **Stream Dock AJAZZ** app-а, ако е инсталиран — той също claim-ва CH340 порта. Kaspersky-то НЕ е виновникът (проверено).
 
 Бележки по hardware-а: устройството се enumerate-ва като `USB Serial Device` (генеричен `usbser.sys`, не CH340 драйвер) и докладва sub-revision `USBMONITOR_3_5` на `HELLO`. Това не пречи на Rev A протокола.
+
+## Live layout
+
+```bash
+./.venv/Scripts/python.exe display.py    # рисува един кадър (виж refresh loop по-долу)
+```
+
+Рисува на 480×320 (matrix фон `assets/background.png`):
+- **5H / WK gauge** — реалните Claude rate-limit % + reset, същите като `/usage`
+- **SESSION** — cost/tokens на активния 5h блок (от ccusage)
+
+### Данни
+
+| Метрика | Източник |
+|---|---|
+| 5h / weekly % + reset (`usage_client.py`) | `GET https://api.anthropic.com/api/oauth/usage` с OAuth token от `~/.claude/.credentials.json` (header `anthropic-beta: oauth-2025-04-20`) |
+| session cost/tokens (`ccusage_client.py`) | `ccusage blocks/daily --json` |
+
+⚠️ `/api/oauth/usage` е **недокументиран** endpoint (reverse-engineer-нат от Claude Code `extension.js`). Дава точните `/usage` % — за разлика от ccusage approximation, защото лимитът тежи по модел вътрешно. Може да се счупи на Claude Code ъпдейт. Token-ът изтича; Claude Code го refresh-ва, иначе ще трябва собствен refresh през `/v1/oauth/token`.
+
+Фонът се генерира с `tools/gen_background.py` (matrix / code / circuit варианти).

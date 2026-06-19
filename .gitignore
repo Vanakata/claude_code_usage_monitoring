@@ -22,3 +22,6 @@ work/tools/
 
 # Logs (turing-smart-screen logger writes log.log)
 *.log
+
+# Background preview варианти (само избраният отива в assets/)
+work/bg-previews/
