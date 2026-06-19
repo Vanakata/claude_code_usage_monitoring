@@ -77,20 +77,21 @@ def _ensure_free(port: str) -> bool:
     return False
 
 
-def _fetch():
-    usage = uc.fetch_usage()
-    snap = None
+def _snapshot():
+    """ccusage session данни (best-effort)."""
     try:
-        snap = cc.fetch_snapshot()
+        return cc.fetch_snapshot()
     except cc.CcusageError as exc:
         print(f"[run] ccusage недостъпен: {exc}", file=sys.stderr)
-    return usage, snap
+        return None
 
 
 def main() -> int:
     print(f"[run] старт — интервал {INTERVAL}s")
     kill_turmo()
     lcd = None
+    last_usage = None   # кеш — на usage грешка (429/мрежа) рисуваме последното добро
+    reinit_streak = 0   # пазач срещу reinit busy-loop
     try:
         while True:
             try:
@@ -109,22 +110,36 @@ def main() -> int:
                     # по-рано) -> иначе HELLO/Reset се разминават и кадърът е размазан
                     time.sleep(SETTLE_SECONDS)
                     lcd = d.connect(port)
-                usage, snap = _fetch()
-                d.render(lcd, usage, snap)
-                print(f"[run] обновено: 5h {usage.five_hour.utilization:.0f}% "
-                      f"wk {usage.seven_day.utilization:.0f}%")
+                # usage: обнови кеша при успех; на грешка (429/мрежа) ползвай стария
+                try:
+                    last_usage = uc.fetch_usage()
+                except uc.UsageError as exc:
+                    print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
+                snap = _snapshot()
+
+                # ВИНАГИ рисуваме кадър (last_usage може да е None -> '--'),
+                # за да не остане екранът на boot-състоянието си (бяло) при replug/429
+                d.render(lcd, last_usage, snap)
+                if last_usage:
+                    print(f"[run] обновено: 5h {last_usage.five_hour.utilization:.0f}% "
+                          f"wk {last_usage.seven_day.utilization:.0f}%")
+                else:
+                    print("[run] рисуван кадър без usage данни (--)")
+
                 if getattr(lcd, "_needs_reinit", False):
-                    # имаше serial reopen насред кадъра (вероятно разместен) ->
-                    # чист пълен reconnect ВЕДНАГА, без да чакаме интервала
-                    print("[run] serial reopen открит — чист reconnect", file=sys.stderr)
+                    # имаше serial reopen насред кадъра (вероятно разместен)
                     try:
                         lcd.closeSerial()
                     except Exception:
                         pass
                     lcd = None
-                    continue
-            except uc.UsageError as exc:
-                print(f"[run] usage грешка (пропускам цикъл): {exc}", file=sys.stderr)
+                    reinit_streak += 1
+                    if reinit_streak <= 3:
+                        print("[run] serial reopen — чист reconnect веднага", file=sys.stderr)
+                        continue  # бърз чист reconnect
+                    print("[run] много reopen-и подред — изчаквам интервал", file=sys.stderr)
+                else:
+                    reinit_streak = 0
             except Exception as exc:  # serial/render -> reconnect
                 msg = str(exc)
                 print(f"[run] цикъл грешка: {type(exc).__name__}: {msg[:160]}", file=sys.stderr)

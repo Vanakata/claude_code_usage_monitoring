@@ -121,26 +121,29 @@ def _txt(lcd, text, x, y, size, color, bold=True):
                     font_color=color, background_image=BG_IMAGE)
 
 
-def _gauge(lcd: LcdCommRevA, y: int, label: str, pct: float, reset_txt: str) -> None:
-    color = _bar_color(pct)
+def _gauge(lcd: LcdCommRevA, y: int, label: str, pct, reset_txt: str) -> None:
+    has = pct is not None
+    color = _bar_color(pct) if has else DIM
     _txt(lcd, label, 12, y + 6, 24, DIM)
-    _txt(lcd, f"{pct:>3.0f}%", 64, y, 34, color)
+    _txt(lcd, f"{pct:>3.0f}%" if has else "  --", 64, y, 34, color)
     _txt(lcd, f"resets {reset_txt}", 250, y + 10, 18, DIM, bold=False)
     lcd.DisplayProgressBar(12, y + 46, width=456, height=22, min_value=0, max_value=100,
-                           value=int(min(100.0, max(0.0, pct))), bar_color=color,
+                           value=int(min(100.0, max(0.0, pct))) if has else 0, bar_color=color,
                            bar_outline=True, background_image=BG_IMAGE)
 
 
-def render(lcd: LcdCommRevA, usage: uc.Usage, snap) -> None:
-    """Рисува един кадър върху matrix фона."""
+def render(lcd: LcdCommRevA, usage, snap) -> None:
+    """Рисува един кадър върху matrix фона. usage може да е None (-> '--')."""
     lcd.DisplayBitmap(BG_IMAGE)
 
     _txt(lcd, "CLAUDE USAGE", 12, 8, 26, WHITE)
 
-    _gauge(lcd, 52, "5H", usage.five_hour.utilization,
-           uc._fmt_delta(usage.five_hour.remaining()))
-    _gauge(lcd, 134, "WK", usage.seven_day.utilization,
-           uc._fmt_delta(usage.seven_day.remaining()))
+    fh = usage.five_hour if usage else None
+    wk = usage.seven_day if usage else None
+    _gauge(lcd, 52, "5H", fh.utilization if fh else None,
+           uc._fmt_delta(fh.remaining()) if fh else "--")
+    _gauge(lcd, 134, "WK", wk.utilization if wk else None,
+           uc._fmt_delta(wk.remaining()) if wk else "--")
 
     # --- SESSION (активен блок, от ccusage) ---
     block_cost = snap.block.cost_usd if snap and snap.block else 0.0
