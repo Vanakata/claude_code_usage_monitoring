@@ -63,6 +63,13 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
     print(f"[display] Свързвам Rev A на {port}...")
     lcd = LcdCommRevA(com_port=port, display_width=WIDTH, display_height=HEIGHT)
     lcd.Reset()
+    # След replug CH340 мостът е готов, но screen MCU-то още буутва -> flush на
+    # серийните буфери, за да чете _hello чисто (иначе HELLO се разминава -> blur/portrait).
+    try:
+        lcd.lcd_serial.reset_input_buffer()
+        lcd.lcd_serial.reset_output_buffer()
+    except Exception:
+        pass
     lcd.InitializeComm()
     lcd.SetBrightness(level=BRIGHTNESS)
     lcd.Clear()  # вътрешно връща PORTRAIT

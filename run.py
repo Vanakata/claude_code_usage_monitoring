@@ -28,6 +28,7 @@ import display as d  # noqa: E402
 import usage_client as uc  # noqa: E402
 
 INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "60"))
+SETTLE_SECONDS = int(os.environ.get("CLAUDE_USAGE_SETTLE", "4"))  # MCU boot след replug
 
 
 def kill_turmo() -> None:
@@ -104,6 +105,9 @@ def main() -> int:
                     if not _ensure_free(port):
                         time.sleep(INTERVAL)
                         continue
+                    # дай време на screen MCU-то да буутне след replug (CH340 е готов
+                    # по-рано) -> иначе HELLO/Reset се разминават и кадърът е размазан
+                    time.sleep(SETTLE_SECONDS)
                     lcd = d.connect(port)
                 usage, snap = _fetch()
                 d.render(lcd, usage, snap)
