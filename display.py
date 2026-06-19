@@ -13,6 +13,9 @@ from __future__ import annotations
 import os
 import sys
 import time
+import types
+
+import serial
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -60,9 +63,25 @@ def _bar_color(pct: float) -> tuple:
     return GREEN
 
 
+def _strict_write_line(self, line: bytes) -> None:
+    """Замества библиотечния WriteLine: БЕЗ скрит reopen-retry.
+
+    Оригиналът при SerialException тихо reopen-ва порта и доизпраща chunk-а
+    насред трансфера -> разместен (garbled) кадър без грешка нагоре. Тук пускаме
+    грешката да изхвърчи, за да направи run.py пълен чист reconnect (HELLO-resync).
+    SerialTimeoutException ("too fast") си остава толерирана.
+    """
+    try:
+        self.serial_write(line)
+    except serial.SerialTimeoutException:
+        pass  # твърде бързо — пропускаме, не е разкачане
+
+
 def connect(port: str = COM_PORT) -> LcdCommRevA:
     print(f"[display] Свързвам Rev A на {port}...")
     lcd = LcdCommRevA(com_port=port, display_width=WIDTH, display_height=HEIGHT)
+    # изключваме скрития reopen-retry на библиотеката (виж _strict_write_line)
+    lcd.WriteLine = types.MethodType(_strict_write_line, lcd)
     lcd.Reset()
     # След replug дисплеят cold-boot-ва: CH340 мостът е готов преди screen MCU-то.
     # Retry-ваме HELLO докато не върне ВАЛИДЕН отговор — това едновременно изчаква
@@ -74,8 +93,11 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
             lcd.lcd_serial.reset_output_buffer()
         except Exception:
             pass
-        lcd.InitializeComm()  # _hello -> сетва lcd.sub_revision
-        if lcd.sub_revision == SubRevision.USBMONITOR_3_5:
+        try:
+            lcd.InitializeComm()  # _hello -> сетва lcd.sub_revision
+        except serial.SerialException:
+            pass  # още буутва -> retry
+        if getattr(lcd, "sub_revision", None) == SubRevision.USBMONITOR_3_5:
             break
         print(f"[display] HELLO не е синхронизиран (опит {attempt + 1}/10) — изчаквам boot...")
         time.sleep(2)
