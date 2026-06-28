@@ -33,6 +33,36 @@ always-render с кеш (екранът винаги рисува, дори бе
 
 ---
 
+## SmallTV Ultra — втори transport (HTTP/WiFi) — ✅ DONE
+
+Реализирано на branch `feat/smalltv-http-transport`: споделен `render.py` (helpers + 240 renderer), `display_smalltv.py` (HTTP transport), `run.py` backend switch (`CLAUDE_USAGE_TARGET`), 240×240 matrix фон, cleanup (хирургически — само наши файлове). Delete endpoint-ът е `GET /delete?file=` (reverse-engineer-нат), auto-switch off е `/set?i_i=3600&autoplay=0`. Транспортът е тестван на живо (dashboard.jpg на устройството). Turing backend-ът непокътнат (re-verified). Виж README "SmallTV Ultra".
+
+<!-- оригинален scope (за референция):
+
+Контекст: добавяме GeekMagic SmallTV Ultra като **втори дисплей** за същите Claude usage данни. За разлика от Turing (serial), SmallTV е самостоятелно WiFi устройство — рендираме кадър на PC-то и го **push-ваме по HTTP**. Транспортът е **тестван на живо и потвърден** (виж "Закован API" долу). Целта: един проект, два transport-а, споделен data/render код — НЕ нов repo.
+
+**Закован API (потвърден end-to-end на 192.168.100.15):**
+- Upload: `POST http://<ip>/doUpload?dir=/image/` — multipart, поле `file`, **JPEG** (тествано с quality 90).
+- Photo Album режим (веднъж при старт): `GET http://<ip>/set?theme=3`.
+- Покажи кадъра: `GET http://<ip>/set?img=/image/<filename>`.
+- Device: **240×240**, IP `192.168.100.15` (env-конфигурируем). И PC-то, и дисплеят трябва да са на една мрежа.
+
+Scope:
+- **Рефактор:** извади render логиката от `display.py` в споделен модул (напр. `render.py`), параметризиран по размер (480×320 Turing / 240×240 SmallTV). Споделят се `ccusage_client.py`, `usage_client.py`, gauge-ове, цветове, `_model_label`, threshold-ите — без дублиране.
+- **Нов `display_smalltv.py`** (тънък HTTP transport): render 240×240 → save JPEG → `POST /doUpload` → `theme=3` (веднъж) → `/set?img`. Фиксирано име `dashboard.jpg`, за да **презаписва**, а не да трупа файлове.
+- **`run.py`** да избира backend по env (`CLAUDE_USAGE_TARGET=turing|smalltv`), със същия refresh loop + error handling.
+- **240×240 layout** — по-тясно от 480×320: компактни 5H/WK gauge-ове + session числа. Преподреди, не само scale.
+- **Cleanup механизъм:** намери точната delete команда (inspect-ни `deletef()`/`setgif()` в browser DevTools на web UI-то — `/set?del` НЕ работи) и изтрий стари кадри при старт; изтрий и тестовия `claude_test.jpg`.
+
+Уловки (вече установени):
+- **JPEG, не PNG** (тествано).
+- `theme=3` веднъж при connect; изключи **auto-switch** на Photo Album, иначе ще ротира с другите картинки.
+- **Refresh 60s** — SmallTV пише на вътрешен flash при upload; чести uploads износват flash-а.
+
+DoD: `CLAUDE_USAGE_TARGET=smalltv python run.py` рендира реалните Claude usage данни (5H/WK + session) на SmallTV-то на 240×240, обновява на 60s, без да трупа файлове; Turing backend-ът продължава да работи непокътнат; commit на branch `feat/smalltv-http-transport`, PR срещу `master`.
+
+-->
+
 ## Опашка (опционални)
 
 - Verify replug self-heal след като 429 падне (виж по-горе).

@@ -105,3 +105,26 @@ Start-ScheduledTask -TaskName ClaudeUsageDisplay   # стартирай ведн
 ```
 
 Task-ът трябва да е **elevated** (Highest), иначе не може да убие protected `TURMO.exe`. Логове: `work\run.log`. Махане: `Unregister-ScheduledTask -TaskName ClaudeUsageDisplay -Confirm:$false`.
+
+## SmallTV Ultra — втори дисплей (HTTP/WiFi)
+
+GeekMagic SmallTV Ultra (240×240) е самостоятелно WiFi устройство — рендираме кадър на PC-то и го push-ваме по HTTP. Споделя `render.py` / `ccusage_client.py` / `usage_client.py` с Turing backend-а.
+
+```bash
+CLAUDE_USAGE_TARGET=smalltv CLAUDE_USAGE_SMALLTV_IP=192.168.100.15 ./.venv/Scripts/python.exe run.py
+```
+
+`CLAUDE_USAGE_TARGET=turing` (default) кара Turing serial дисплея; `smalltv` — SmallTV по HTTP. И PC-то, и дисплеят трябва да са на една мрежа.
+
+### API (reverse-engineer-нат от web UI-то)
+
+| Действие | Endpoint |
+|---|---|
+| Upload | `POST /doUpload?dir=/image/` — multipart, поле `file`, **JPEG** |
+| Photo Album | `GET /set?theme=3` |
+| Изключи авто-ротация | `GET /set?i_i=3600&autoplay=0` |
+| Покажи кадър | `GET /set?img=/image/dashboard.jpg` |
+| Изтрий файл | `GET /delete?file=<urlencoded>` |
+| Списък | `GET /filelist?dir=/image/` |
+
+Фиксирано име `dashboard.jpg` → **презаписва** (flash е малък, не трупа файлове). Cleanup при старт трие само наши файлове (НЕ user pics). Flash износване → refresh 60s.

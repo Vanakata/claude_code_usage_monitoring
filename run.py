@@ -86,8 +86,8 @@ def _snapshot():
         return None
 
 
-def main() -> int:
-    print(f"[run] старт — интервал {INTERVAL}s")
+def _run_turing() -> int:
+    print(f"[run] target=turing — интервал {INTERVAL}s")
     kill_turmo()
     lcd = None
     last_usage = None   # кеш — на usage грешка (429/мрежа) рисуваме последното добро
@@ -161,6 +161,47 @@ def main() -> int:
         except Exception:
             pass
     return 0
+
+
+def _run_smalltv() -> int:
+    """HTTP transport loop (без serial/TURMO/preflight — устройството е по WiFi)."""
+    import display_smalltv as backend
+    print(f"[run] target=smalltv — интервал {INTERVAL}s")
+    handle = None
+    last_usage = None
+    try:
+        while True:
+            try:
+                if handle is None:
+                    handle = backend.connect()  # cleanup + theme=3 + autoplay off
+                try:
+                    last_usage = uc.fetch_usage()
+                except uc.UsageError as exc:
+                    print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
+                snap = _snapshot()
+                backend.render(handle, last_usage, snap)  # винаги рисуваме кадър
+                if last_usage:
+                    print(f"[run] smalltv обновено: 5h {last_usage.five_hour.utilization:.0f}% "
+                          f"wk {last_usage.seven_day.utilization:.0f}%")
+                else:
+                    print("[run] smalltv кадър без usage данни (--)")
+            except backend.SmallTvError as exc:
+                print(f"[run] smalltv мрежова грешка (reconnect): {exc}", file=sys.stderr)
+                handle = None
+            except Exception as exc:
+                print(f"[run] цикъл грешка: {type(exc).__name__}: {str(exc)[:160]}", file=sys.stderr)
+                handle = None
+            time.sleep(INTERVAL)
+    except KeyboardInterrupt:
+        print("\n[run] спрян")
+    return 0
+
+
+def main() -> int:
+    target = os.environ.get("CLAUDE_USAGE_TARGET", "turing").lower()
+    if target == "smalltv":
+        return _run_smalltv()
+    return _run_turing()
 
 
 if __name__ == "__main__":

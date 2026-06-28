@@ -11,7 +11,6 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
 import time
 import types
@@ -32,6 +31,10 @@ from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation, SubRevision  # 
 
 import ccusage_client as cc  # noqa: E402
 import usage_client as uc  # noqa: E402
+from render import (  # noqa: E402  — споделени helpers/цветове (без дублиране)
+    WHITE, DIM, GREEN, AMBER, RED, MODEL,
+    bar_color as _bar_color, model_label as _model_label, draw_segmented,
+)
 
 
 def _safe_open_serial(self):
@@ -69,23 +72,7 @@ _F = os.path.join(LIB_DIR, "res", "fonts", "roboto-mono")
 FONT_REG = os.path.join(_F, "RobotoMono-Regular.ttf")
 FONT_BOLD = os.path.join(_F, "RobotoMono-Bold.ttf")
 
-# --- Цветове ---
-WHITE = (235, 235, 235)
-DIM = (150, 150, 150)
-GREEN = (0, 220, 90)
-AMBER = (240, 180, 0)
-RED = (235, 60, 60)
-MODEL = (120, 235, 160)  # активен модел (горе вдясно)
-
-
-def _bar_color(pct: float) -> tuple:
-    """Зелено < 70%, кехлибар < 90%, червено иначе."""
-    if pct >= 90:
-        return RED
-    if pct >= 70:
-        return AMBER
-    return GREEN
-
+# Цветове, _bar_color, _model_label, draw_segmented идват от render.py (споделени).
 
 _BG_PIL = None
 
@@ -99,39 +86,10 @@ def _bg_pil() -> Image.Image:
 
 
 def _segmented_bar(lcd, x: int, y: int, w: int, h: int, pct, color, cells: int = 14) -> None:
-    """Модерен segmented бар: дискретни клетки върху matrix фона.
-
-    Пълните клетки са плътен цвят, празните — тънък контур (matrix-ът прозира).
-    """
-    p = max(0.0, min(100.0, pct)) if pct is not None else 0.0
-    filled = int(round(p / 100.0 * cells))
+    """Turing: crop на matrix фона + segmented клетки (render.draw_segmented) + push."""
     img = _bg_pil().crop((x, y, x + w, y + h)).copy()
-    d = ImageDraw.Draw(img)
-    gap = 4
-    cw = (w - gap * (cells - 1)) / cells
-    empty_outline = (35, 80, 50)
-    for i in range(cells):
-        cx0 = int(round(i * (cw + gap)))
-        cx1 = int(round(cx0 + cw))
-        box = [cx0, 0, cx1, h - 1]
-        if i < filled:
-            d.rounded_rectangle(box, radius=3, fill=color)
-        else:
-            d.rounded_rectangle(box, radius=3, outline=empty_outline, width=1)
+    draw_segmented(ImageDraw.Draw(img), 0, 0, w, h, pct, color, cells=cells)
     lcd.DisplayPILImage(img, x, y)
-
-
-def _model_label(models) -> str:
-    """['claude-opus-4-8'] -> 'Opus 4.8'. При няколко — най-силния (opus>sonnet>haiku)."""
-    if not models:
-        return "--"
-    rank = {"opus": 0, "sonnet": 1, "haiku": 2}
-    top = min(models, key=lambda m: next((v for k, v in rank.items() if k in m), 9))
-    fam = next((k for k in rank if k in top), None)
-    nums = re.findall(r"\d+", top)
-    if fam and len(nums) >= 2:
-        return f"{fam.capitalize()} {nums[0]}.{nums[1]}"
-    return top
 
 
 def _resilient_write_line(self, line: bytes) -> None:
