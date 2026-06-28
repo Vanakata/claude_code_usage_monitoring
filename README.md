@@ -30,6 +30,16 @@ ccusage --json  →  Python parser  →  CustomDataSource  →  Turing Rev A (CO
 
 Python 3.9+. Виж `work/tomorrow.md` за активната задача.
 
+## Quick setup (Windows)
+
+Еднократно, от root на проекта (clone на драйвер либ-а + venv + зависимости + проверки):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File setup.ps1
+```
+
+После: вкарай монитора и `./.venv/Scripts/python.exe run.py` (виж "Refresh loop + автостарт" по-долу). Изисква Node (за `ccusage`) и да си логнат в Claude Code (за `/usage` token-а). NB: показва usage-а на акаунта на тази машина.
+
 ## POC — пускане (display handshake)
 
 Доказва, че serial протоколът (Rev A) + портът (COM5) работят: светва дисплея със статичен текст + число. Никаква ccusage логика.
