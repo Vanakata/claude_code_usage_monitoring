@@ -163,16 +163,20 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
             col = tuple(int(CAL_GREEN[k] + (DB_RED[k] - CAL_GREEN[k]) * t) for k in range(3))
             d.line([(xi, by0), (xi, by1)], fill=col)
 
+    # неделята на reset седмицата (за да покажем целите 7 дни, дори от съседен месец)
+    week_sunday = reset_d - timedelta(days=(reset_d.weekday() + 1) % 7) if reset_d else None
+
     for r, week in enumerate(weeks):
         for c, day in enumerate(week):
-            if day == 0:
-                continue
             cx = x0 + (c + 0.5) * cw
             cy = gy + (r + 0.5) * rh
-            in_band = r == reset_row
-            d.text((cx, cy), str(day),
-                   font=_font(FONT_BOLD if in_band else FONT_REG, 11),
-                   fill=(255, 255, 255) if in_band else NAVY, anchor="mm")
+            if r == reset_row and week_sunday is not None:
+                # цялата reset седмица — реални дати, вкл. дни от другия месец
+                dnum = (week_sunday + timedelta(days=c)).day
+                d.text((cx, cy), str(dnum), font=_font(FONT_BOLD, 11),
+                       fill=(255, 255, 255), anchor="mm")
+            elif day != 0:
+                d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=NAVY, anchor="mm")
 
 
 def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
