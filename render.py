@@ -264,17 +264,12 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
         d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
         d.text((w - 7, hh // 2), model_label(models), font=fb(12), fill=DB_AMBER, anchor="rm")
 
-        # пръстени по-нагоре + reset време под всеки (за да се вижда на малкия екран)
-        for cx, label, p, win in ((64, "5H", fhp, fh), (176, "WK", wkp, wk)):
-            draw_ring(d, cx, 74, 36, 11, p, 18)
-            d.text((cx, 114), label, font=fb(13), fill=TXT, anchor="ma")
-            d.text((cx, 131), uc._fmt_delta(win.remaining()) if win else "--",
-                   font=fr(11), fill=MUTED, anchor="ma")
-
-        d.rounded_rectangle([8, 152, w - 8, 226], radius=8, fill=CARD)
-        d.text((18, 170), f"${cost:.2f}", font=fb(24), fill=TXT, anchor="lm")
-        d.text((w - 16, 172), f"{cc.format_tokens(tokens)} tok", font=fr(12), fill=MUTED, anchor="rm")
-        d.text((18, 202), f"today ${today:.2f}", font=fr(12), fill=MUTED, anchor="lm")
+        # САМО пръстени (по-големи, за по-добра четимост) + reset време; без cost/tokens
+        for cx, label, p, win in ((62, "5H", fhp, fh), (178, "WK", wkp, wk)):
+            draw_ring(d, cx, 110, 50, 13, p, 28)
+            d.text((cx, 176), label, font=fb(16), fill=TXT, anchor="ma")
+            d.text((cx, 198), uc._fmt_delta(win.remaining()) if win else "--",
+                   font=fr(13), fill=MUTED, anchor="ma")
     return img
 
 
