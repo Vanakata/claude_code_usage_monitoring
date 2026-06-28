@@ -130,6 +130,27 @@ def theme_for_now() -> str:
     return "light" if start <= datetime.now().hour < end else "dark"
 
 
+ALARM_PCT = int(os.environ.get("CLAUDE_USAGE_ALARM_PCT", "95"))  # праг за аларма
+
+
+def alarm_breaches(usage):
+    """Списък с пробитите прозорци, напр. ['5H 98%', 'WK 96%']. Празен -> няма аларма."""
+    out = []
+    if usage:
+        if usage.five_hour and usage.five_hour.utilization >= ALARM_PCT:
+            out.append(f"5H {usage.five_hour.utilization:.0f}%")
+        if usage.seven_day and usage.seven_day.utilization >= ALARM_PCT:
+            out.append(f"WK {usage.seven_day.utilization:.0f}%")
+    return out
+
+
+def _warn_tri(d, cx, cy, s, col=(255, 255, 255)):
+    """Малък триъгълник-предупреждение с удивителна."""
+    d.polygon([(cx, cy - s), (cx - s, cy + s), (cx + s, cy + s)], outline=col, width=2)
+    d.line([(cx, cy - s + 4), (cx, cy + s - 5)], fill=col, width=2)
+    d.ellipse([cx - 1, cy + s - 4, cx + 1, cy + s - 2], fill=col)
+
+
 def _ring_color(pct) -> tuple:
     """Тийл < 70%, кехлибар < 90%, червено иначе (dashboard палитра)."""
     if pct is None:
@@ -222,6 +243,10 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
     tokens = snap.block.total_tokens if snap and snap.block else 0
     today = snap.daily.today_cost if snap else 0.0
 
+    breaches = alarm_breaches(usage)   # аларма при >= ALARM_PCT
+    alarm = bool(breaches)
+    hdr_fill = DB_RED if alarm else NAVY
+
     def fb(size):
         return _font(FONT_BOLD, size)
 
@@ -230,9 +255,16 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
 
     if big:  # 480x320 (Turing)
         hh = 44
-        d.rectangle([0, 0, w, hh], fill=NAVY)
-        d.text((16, hh // 2), "CLAUDE USAGE", font=fb(20), fill=HEADER_TXT, anchor="lm")
-        d.text((w - 14, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="rm")
+        d.rectangle([0, 0, w, hh], fill=hdr_fill)
+        if alarm:
+            _warn_tri(d, 24, hh // 2, 10)
+            d.text((44, hh // 2), "LIMIT  " + "  ".join(breaches), font=fb(18),
+                   fill=(255, 255, 255), anchor="lm")
+            d.text((w - 14, hh // 2), model_label(models), font=fb(15),
+                   fill=(255, 235, 235), anchor="rm")
+        else:
+            d.text((16, hh // 2), "CLAUDE USAGE", font=fb(20), fill=HEADER_TXT, anchor="lm")
+            d.text((w - 14, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="rm")
 
         # пръстени (горе-ляво)
         for cx, label, p, win in ((80, "5H", fhp, fh), (196, "WK", wkp, wk)):
@@ -260,9 +292,14 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
         d.text((w - 24, 212), week_s, font=fb(14), fill=TXT, anchor="rm")
     else:  # 240x240 (SmallTV)
         hh = 30
-        d.rectangle([0, 0, w, hh], fill=NAVY)
-        d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
-        d.text((w - 7, hh // 2), model_label(models), font=fb(12), fill=DB_AMBER, anchor="rm")
+        d.rectangle([0, 0, w, hh], fill=hdr_fill)
+        if alarm:
+            _warn_tri(d, 13, hh // 2, 7)
+            d.text((26, hh // 2), "LIMIT " + " ".join(breaches), font=fb(12),
+                   fill=(255, 255, 255), anchor="lm")
+        else:
+            d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
+            d.text((w - 7, hh // 2), model_label(models), font=fb(12), fill=DB_AMBER, anchor="rm")
 
         # САМО пръстени (по-големи, за по-добра четимост) + reset време; без cost/tokens
         for cx, label, p, win in ((62, "5H", fhp, fh), (178, "WK", wkp, wk)):
@@ -270,6 +307,12 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
             d.text((cx, 176), label, font=fb(16), fill=TXT, anchor="ma")
             d.text((cx, 198), uc._fmt_delta(win.remaining()) if win else "--",
                    font=fr(13), fill=MUTED, anchor="ma")
+
+    if alarm:  # червена рамка около целия екран
+        bw = 6 if big else 5
+        off = bw // 2
+        d.rounded_rectangle([off, off, w - 1 - off, h - 1 - off], radius=10,
+                            outline=DB_RED, width=bw)
     return img
 
 

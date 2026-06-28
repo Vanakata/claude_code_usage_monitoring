@@ -141,16 +141,19 @@ def render(lcd: LcdCommRevA, usage, snap) -> None:
     # на данните след 429), трябва пълен redraw, иначе лентата няма да се появи
     reset_key = wk.resets_at.astimezone().date() if (wk and wk.resets_at) else None
     theme = render_mod.theme_for_now()  # смяна на тема (ден/нощ) -> пълен redraw
+    alarm_now = bool(render_mod.alarm_breaches(usage))  # аларма -> рамка/червен header
     need_full = (not getattr(lcd, "_dash_base", False)
                  or getattr(lcd, "_dash_day", None) != today
                  or getattr(lcd, "_dash_reset", "init") != reset_key
-                 or getattr(lcd, "_dash_theme", "init") != theme)
+                 or getattr(lcd, "_dash_theme", "init") != theme
+                 or alarm_now or getattr(lcd, "_dash_alarm", False) != alarm_now)
     if need_full:
-        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър при connect/нов ден/нов reset/смяна на тема
+        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър при connect/ден/reset/тема/аларма
         lcd._dash_base = True
         lcd._dash_day = today
         lcd._dash_reset = reset_key
         lcd._dash_theme = theme
+        lcd._dash_alarm = alarm_now
     else:
         for (x, y, x2, y2) in _DYN_REGIONS:
             lcd.DisplayPILImage(frame.crop((x, y, x2, y2)), x, y)
