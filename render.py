@@ -131,20 +131,23 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
     """
     cols = 7
     cw = w / cols
-    d.text((x0 + w / 2, y0), now.strftime("%B %Y").upper(), font=_font(FONT_BOLD, 13),
+    reset_d = reset_date.astimezone().date() if reset_date else None
+    # календарът показва МЕСЕЦА НА RESET-а (иначе при reset в следващ месец лентата не се вижда)
+    anchor = reset_d if reset_d else now.date()
+
+    d.text((x0 + w / 2, y0), anchor.strftime("%B %Y").upper(), font=_font(FONT_BOLD, 13),
            fill=NAVY, anchor="ma")
     hy = y0 + 22
     for i, ww in enumerate(["S", "M", "T", "W", "T", "F", "S"]):
         d.text((x0 + (i + 0.5) * cw, hy), ww, font=_font(FONT_REG, 11), fill=MUTED, anchor="ma")
 
-    reset_d = reset_date.astimezone().date() if reset_date else None
-    weeks = _calmod.Calendar(firstweekday=6).monthdayscalendar(now.year, now.month)
+    weeks = _calmod.Calendar(firstweekday=6).monthdayscalendar(anchor.year, anchor.month)
     gy = y0 + 40
     rh = min(18.0, (h - 40) / max(len(weeks), 1))
 
-    # ред на reset седмицата (по reset деня, ако е в текущия месец)
+    # ред на reset седмицата (reset денят винаги е в показания месец)
     reset_row = None
-    if reset_d and reset_d.year == now.year and reset_d.month == now.month:
+    if reset_d:
         for r, week in enumerate(weeks):
             if reset_d.day in week:
                 reset_row = r
