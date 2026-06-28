@@ -28,17 +28,16 @@ CODE_LINES = [
 ]
 
 
-def matrix() -> Image.Image:
-    img = Image.new("RGB", (W, H), (8, 14, 9))
+def matrix(w: int = W, h: int = H, step: int = 14) -> Image.Image:
+    img = Image.new("RGB", (w, h), (8, 14, 9))
     d = ImageDraw.Draw(img)
     f = ImageFont.truetype(FONT_PATH, 14)
-    step = 14
-    for x in range(0, W, step):
-        head = random.randint(-H, H)
+    for x in range(0, w, step):
+        head = random.randint(-h, h)
         length = random.randint(8, 26)
         for k in range(length):
             y = head - k * 16
-            if 0 <= y < H:
+            if 0 <= y < h:
                 ch = random.choice(GLYPHS)
                 if k == 0:
                     d.text((x, y), ch, font=f, fill=(180, 255, 200))  # ярка глава
@@ -90,6 +89,10 @@ def main():
         p = os.path.join(OUT, f"bg_{name}.png")
         fn().save(p)
         print("wrote", p)
+    # 240x240 matrix за SmallTV -> директно в assets/
+    p240 = os.path.join(ROOT, "assets", "background_240.png")
+    matrix(240, 240, step=13).save(p240)
+    print("wrote", p240)
 
 
 if __name__ == "__main__":
