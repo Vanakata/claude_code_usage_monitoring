@@ -31,6 +31,27 @@ from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation, SubRevision  # 
 import ccusage_client as cc  # noqa: E402
 import usage_client as uc  # noqa: E402
 
+
+def _safe_open_serial(self):
+    """Замества библиотечния openSerial: RAISE вместо os._exit(0).
+
+    Оригиналът прави os._exit(0) при липсващ/зает порт — НЕхванаемо, убива целия
+    процес, и то с код 0 (успех) -> Task Scheduler не рестартира. Това е причината
+    за "вечния бял екран" след дръпване. Тук хвърляме SerialException, за да я хване
+    run.py и да reconnect-не (процесът остава жив завинаги).
+    """
+    port = self.com_port
+    if port == "AUTO":
+        port = self.auto_detect_com_port()
+        if not port:
+            raise serial.SerialException("AUTO: дисплеят не е намерен")
+        self.com_port = port
+    self.lcd_serial = serial.Serial(self.com_port, 115200, timeout=1, rtscts=True)
+
+
+# Patch-ваме на ниво клас -> покрива и __init__, и Reset(), и всеки retry.
+LcdCommRevA.openSerial = _safe_open_serial
+
 # --- Hardware (виж README) ---
 # AUTO -> библиотеката намира устройството по VID/PID (USB35INCHIPSV2 / 1A86:5722),
 # та преживява смяна на COM номера при ново включване. Override с env при нужда.
@@ -112,7 +133,8 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
         time.sleep(2)
     lcd.SetBrightness(level=BRIGHTNESS)
     lcd.Clear()  # вътрешно връща PORTRAIT
-    lcd.SetOrientation(orientation=Orientation.LANDSCAPE)  # 480x320
+    lcd.SetOrientation(orientation=Orientation.REVERSE_LANDSCAPE)  # 480x320, обърнато 180°
+    draw_static(lcd)  # фон + статични етикети ВЕДНЪЖ (виж draw_static)
     return lcd
 
 
@@ -121,36 +143,48 @@ def _txt(lcd, text, x, y, size, color, bold=True):
                     font_color=color, background_image=BG_IMAGE)
 
 
-def _gauge(lcd: LcdCommRevA, y: int, label: str, pct, reset_txt: str) -> None:
+def draw_static(lcd: LcdCommRevA) -> None:
+    """Рисува фона + НЕпроменящите се елементи ВЕДНЪЖ (при connect/reconnect).
+
+    Така render() не преначертава целия екран всеки цикъл (което насича по serial) —
+    обновява само малките динамични полета.
+    """
+    lcd.DisplayBitmap(BG_IMAGE)
+    _txt(lcd, "CLAUDE USAGE", 12, 8, 26, WHITE)
+    _txt(lcd, "5H", 12, 58, 24, DIM)
+    _txt(lcd, "WK", 12, 140, 24, DIM)
+    _txt(lcd, "SESSION", 12, 224, 20, DIM)
+
+
+def _gauge(lcd: LcdCommRevA, y: int, pct, reset_txt: str) -> None:
+    """Динамичната част на gauge: %, reset, бар. Фиксирана ширина -> без ghosting."""
     has = pct is not None
     color = _bar_color(pct) if has else DIM
-    _txt(lcd, label, 12, y + 6, 24, DIM)
     _txt(lcd, f"{pct:>3.0f}%" if has else "  --", 64, y, 34, color)
-    _txt(lcd, f"resets {reset_txt}", 250, y + 10, 18, DIM, bold=False)
+    _txt(lcd, f"resets {reset_txt:<6}", 250, y + 10, 18, DIM, bold=False)
     lcd.DisplayProgressBar(12, y + 46, width=456, height=22, min_value=0, max_value=100,
                            value=int(min(100.0, max(0.0, pct))) if has else 0, bar_color=color,
                            bar_outline=True, background_image=BG_IMAGE)
 
 
 def render(lcd: LcdCommRevA, usage, snap) -> None:
-    """Рисува един кадър върху matrix фона. usage може да е None (-> '--')."""
-    lcd.DisplayBitmap(BG_IMAGE)
+    """Обновява само ДИНАМИЧНИТЕ полета (фонът/етикетите са от draw_static).
 
-    _txt(lcd, "CLAUDE USAGE", 12, 8, 26, WHITE)
-
+    usage може да е None (-> '--'). Всички полета са с фиксирана ширина, за да
+    презапишат старата стойност изцяло (иначе остатъци ghost-ват без пълен redraw).
+    """
     fh = usage.five_hour if usage else None
     wk = usage.seven_day if usage else None
-    _gauge(lcd, 52, "5H", fh.utilization if fh else None,
+    _gauge(lcd, 52, fh.utilization if fh else None,
            uc._fmt_delta(fh.remaining()) if fh else "--")
-    _gauge(lcd, 134, "WK", wk.utilization if wk else None,
+    _gauge(lcd, 134, wk.utilization if wk else None,
            uc._fmt_delta(wk.remaining()) if wk else "--")
 
     # --- SESSION (активен блок, от ccusage) ---
     block_cost = snap.block.cost_usd if snap and snap.block else 0.0
     block_tokens = snap.block.total_tokens if snap and snap.block else 0
-    _txt(lcd, "SESSION", 12, 224, 20, DIM)
     _txt(lcd, f"${block_cost:>6.2f}", 12, 252, 40, WHITE)
-    _txt(lcd, cc.format_tokens(block_tokens) + " tok", 250, 264, 28, WHITE)
+    _txt(lcd, f"{cc.format_tokens(block_tokens):>6} tok", 250, 264, 28, WHITE)
 
     today = snap.daily.today_cost if snap else 0.0
     _txt(lcd, f"today ${today:>6.2f}", 12, 300, 16, DIM, bold=False)

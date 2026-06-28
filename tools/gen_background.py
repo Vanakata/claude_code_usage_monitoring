@@ -29,19 +29,22 @@ CODE_LINES = [
 
 
 def matrix() -> Image.Image:
-    img = Image.new("RGB", (W, H), (6, 9, 7))
+    img = Image.new("RGB", (W, H), (8, 14, 9))
     d = ImageDraw.Draw(img)
     f = ImageFont.truetype(FONT_PATH, 14)
-    step = 15
+    step = 14
     for x in range(0, W, step):
         head = random.randint(-H, H)
-        length = random.randint(6, 22)
+        length = random.randint(8, 26)
         for k in range(length):
             y = head - k * 16
             if 0 <= y < H:
-                # head по-ярко, опашката избледнява (но цялото е тъмно)
-                g = max(18, 110 - k * 9)
-                d.text((x, y), random.choice(GLYPHS), font=f, fill=(8, g, 30))
+                ch = random.choice(GLYPHS)
+                if k == 0:
+                    d.text((x, y), ch, font=f, fill=(180, 255, 200))  # ярка глава
+                else:
+                    g = max(55, 235 - k * 11)  # по-светла опашка
+                    d.text((x, y), ch, font=f, fill=(25, g, 60))
     return img
 
 
