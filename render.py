@@ -104,6 +104,32 @@ DB_RED = (228, 82, 82)
 CAL_GREEN = (60, 185, 105)    # календар: начало на reset седмицата
 
 
+def _apply_theme(mode: str) -> None:
+    """Сетва цветовете на палитрата (light / dark)."""
+    global DB_BG, CARD, NAVY, TXT, HEADER_TXT, DB_AMBER, TEAL, MUTED, RING_TRACK, DB_RED, CAL_GREEN
+    if mode == "light":
+        DB_BG, CARD, NAVY, TXT = (236, 239, 243), (255, 255, 255), (28, 42, 74), (28, 42, 74)
+        HEADER_TXT, DB_AMBER, TEAL = (244, 247, 250), (245, 166, 35), (26, 150, 150)
+        MUTED, RING_TRACK, DB_RED, CAL_GREEN = (122, 134, 152), (220, 225, 232), (220, 70, 70), (46, 170, 90)
+    else:  # dark
+        DB_BG, CARD, NAVY, TXT = (16, 20, 30), (28, 34, 50), (22, 28, 46), (226, 231, 240)
+        HEADER_TXT, DB_AMBER, TEAL = (236, 240, 248), (245, 175, 55), (38, 178, 170)
+        MUTED, RING_TRACK, DB_RED, CAL_GREEN = (142, 152, 172), (45, 53, 72), (228, 82, 82), (60, 185, 105)
+
+
+def theme_for_now() -> str:
+    """Активна тема: env CLAUDE_USAGE_THEME=light|dark|auto (default auto по час).
+
+    Auto: светло между DAY_START и DAY_END (default 07–19), иначе тъмно.
+    """
+    mode = os.environ.get("CLAUDE_USAGE_THEME", "auto").lower()
+    if mode in ("light", "dark"):
+        return mode
+    start = int(os.environ.get("CLAUDE_USAGE_DAY_START", "7"))
+    end = int(os.environ.get("CLAUDE_USAGE_DAY_END", "19"))
+    return "light" if start <= datetime.now().hour < end else "dark"
+
+
 def _ring_color(pct) -> tuple:
     """Тийл < 70%, кехлибар < 90%, червено иначе (dashboard палитра)."""
     if pct is None:
@@ -181,7 +207,8 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
 
 
 def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
-    """Clean dashboard кадър (light тема, радиални %-пръстени). За двата размера."""
+    """Dashboard кадър (радиални %-пръстени). Тема по часа (light денем / dark вечер)."""
+    _apply_theme(theme_for_now())
     img = Image.new("RGB", (w, h), DB_BG)
     d = ImageDraw.Draw(img)
     big = w >= 400
