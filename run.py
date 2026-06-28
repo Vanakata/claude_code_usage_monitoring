@@ -1,13 +1,15 @@
 #!/usr/bin/env python
-"""Refresh loop — обновява дисплея на интервал.
+"""Refresh loop — обновява дисплея(ите) на интервал.
 
-Цикъл: fetch (реален /usage + ccusage) -> render -> sleep. Resilient:
-- временна грешка (network/ccusage/usage) -> лог + продължава (дисплеят пази стария кадър)
-- serial проблем -> reconnect следващия цикъл
-- COM5 зает (TURMO се върнал) -> убива TURMO и reconnect-ва
+CLAUDE_USAGE_TARGET: turing | smalltv | both (default turing).
+В `both` режим ЕДИН процес дърпа /usage веднъж и рисува на двата дисплея —
+така не удвояваме виканиятa към endpoint-а (по-малко 429).
 
-ВАЖНО: за да може да убива TURMO.exe (protected процес), пусни го **elevated**
-(autostart task с highest privileges). Виж README.
+Цикъл: fetch (реален /usage + ccusage) -> render към всеки backend -> sleep.
+Всеки backend има НЕЗАВИСИМ error handling — ако единият падне, другият продължава.
+
+ВАЖНО: Turing backend-ът убива protected TURMO.exe -> пусни процеса **elevated**
+(autostart task с highest privileges). SmallTV (HTTP) не иска elevation. Виж README.
 """
 import os
 import subprocess
@@ -24,7 +26,6 @@ import serial  # noqa: E402
 from serial.tools.list_ports import comports  # noqa: E402
 
 import ccusage_client as cc  # noqa: E402
-import display as d  # noqa: E402
 import usage_client as uc  # noqa: E402
 
 INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "60"))
@@ -86,111 +87,92 @@ def _snapshot():
         return None
 
 
-def _run_turing() -> int:
-    print(f"[run] target=turing — интервал {INTERVAL}s")
-    kill_turmo()
-    lcd = None
-    last_usage = None   # кеш — на usage грешка (429/мрежа) рисуваме последното добро
-    reinit_streak = 0   # пазач срещу reinit busy-loop
-    try:
-        while True:
+class TuringDriver:
+    """Serial Turing дисплей: preflight + connect + reconnect + TURMO kill."""
+
+    def __init__(self):
+        import display as d
+        self.d = d
+        self.lcd = None
+        kill_turmo()  # разчисти порта при старт
+
+    def tick(self, usage, snap) -> None:
+        for _ in range(4):  # позволи няколко чисти reconnect-а в рамките на тика
             try:
-                if lcd is None:
-                    # preflight: устройство налично + порт свободен ПРЕДИ connect
-                    # (иначе библиотеката прави нехванаем os._exit)
+                if self.lcd is None:
                     port = _resolve_port()
                     if port is None:
-                        print("[run] дисплеят не е намерен (изключен?) — чакам", file=sys.stderr)
-                        time.sleep(INTERVAL)
-                        continue
+                        print("[run] turing: дисплеят не е намерен — пропускам", file=sys.stderr)
+                        return
                     if not _ensure_free(port):
-                        time.sleep(INTERVAL)
-                        continue
-                    # дай време на screen MCU-то да буутне след replug (CH340 е готов
-                    # по-рано) -> иначе HELLO/Reset се разминават и кадърът е размазан
-                    time.sleep(SETTLE_SECONDS)
-                    lcd = d.connect(port)
-                # usage: обнови кеша при успех; на грешка (429/мрежа) ползвай стария
-                try:
-                    last_usage = uc.fetch_usage()
-                except uc.UsageError as exc:
-                    print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
-                snap = _snapshot()
-
-                # ВИНАГИ рисуваме кадър (last_usage може да е None -> '--'),
-                # за да не остане екранът на boot-състоянието си (бяло) при replug/429
-                d.render(lcd, last_usage, snap)
-                if last_usage:
-                    print(f"[run] обновено: 5h {last_usage.five_hour.utilization:.0f}% "
-                          f"wk {last_usage.seven_day.utilization:.0f}%")
+                        return
+                    time.sleep(SETTLE_SECONDS)  # MCU boot след replug
+                    self.lcd = self.d.connect(port)
+                self.d.render(self.lcd, usage, snap)
+                if getattr(self.lcd, "_needs_reinit", False):
+                    self._drop()
+                    print("[run] turing: serial reopen — чист reconnect", file=sys.stderr)
+                    continue  # чист reconnect веднага, в същия тик
+                if usage:
+                    print(f"[run] turing: 5h {usage.five_hour.utilization:.0f}% "
+                          f"wk {usage.seven_day.utilization:.0f}%")
                 else:
-                    print("[run] рисуван кадър без usage данни (--)")
-
-                if getattr(lcd, "_needs_reinit", False):
-                    # имаше serial reopen насред кадъра (вероятно разместен)
-                    try:
-                        lcd.closeSerial()
-                    except Exception:
-                        pass
-                    lcd = None
-                    reinit_streak += 1
-                    if reinit_streak <= 3:
-                        print("[run] serial reopen — чист reconnect веднага", file=sys.stderr)
-                        continue  # бърз чист reconnect
-                    print("[run] много reopen-и подред — изчаквам интервал", file=sys.stderr)
-                else:
-                    reinit_streak = 0
-            except Exception as exc:  # serial/render -> reconnect
+                    print("[run] turing: кадър без usage данни (--)")
+                return
+            except Exception as exc:  # serial/render -> reconnect следващия тик
                 msg = str(exc)
-                print(f"[run] цикъл грешка: {type(exc).__name__}: {msg[:160]}", file=sys.stderr)
-                try:
-                    if lcd:
-                        lcd.closeSerial()
-                except Exception:
-                    pass
-                lcd = None
+                print(f"[run] turing грешка: {type(exc).__name__}: {msg[:140]}", file=sys.stderr)
+                self._drop()
                 if any(s in msg for s in ("Access is denied", "PermissionError", "could not open")):
-                    kill_turmo()  # COM5 зает -> TURMO се е върнал
-            time.sleep(INTERVAL)
-    except KeyboardInterrupt:
-        print("\n[run] спрян")
-    finally:
+                    kill_turmo()
+                return
+
+    def _drop(self):
         try:
-            if lcd:
-                lcd.closeSerial()
+            if self.lcd:
+                self.lcd.closeSerial()
         except Exception:
             pass
-    return 0
+        self.lcd = None
 
 
-def _run_smalltv() -> int:
-    """HTTP transport loop (без serial/TURMO/preflight — устройството е по WiFi)."""
-    import display_smalltv as backend
-    print(f"[run] target=smalltv — интервал {INTERVAL}s")
-    handle = None
-    last_usage = None
+class SmallTvDriver:
+    """SmallTV HTTP дисплей (WiFi). Без serial/TURMO/elevation."""
+
+    def __init__(self):
+        import display_smalltv as backend
+        self.backend = backend
+        self.handle = None
+
+    def tick(self, usage, snap) -> None:
+        try:
+            if self.handle is None:
+                self.handle = self.backend.connect()  # cleanup + theme=3 + autoplay off
+            self.backend.render(self.handle, usage, snap)
+            if usage:
+                print(f"[run] smalltv: 5h {usage.five_hour.utilization:.0f}% "
+                      f"wk {usage.seven_day.utilization:.0f}%")
+            else:
+                print("[run] smalltv: кадър без usage данни (--)")
+        except self.backend.SmallTvError as exc:
+            print(f"[run] smalltv мрежова грешка (reconnect): {exc}", file=sys.stderr)
+            self.handle = None
+        except Exception as exc:
+            print(f"[run] smalltv грешка: {type(exc).__name__}: {str(exc)[:140]}", file=sys.stderr)
+            self.handle = None
+
+
+def _loop(drivers) -> int:
+    last_usage = None  # кеш — на usage грешка (429/мрежа) рисуваме последното добро
     try:
         while True:
             try:
-                if handle is None:
-                    handle = backend.connect()  # cleanup + theme=3 + autoplay off
-                try:
-                    last_usage = uc.fetch_usage()
-                except uc.UsageError as exc:
-                    print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
-                snap = _snapshot()
-                backend.render(handle, last_usage, snap)  # винаги рисуваме кадър
-                if last_usage:
-                    print(f"[run] smalltv обновено: 5h {last_usage.five_hour.utilization:.0f}% "
-                          f"wk {last_usage.seven_day.utilization:.0f}%")
-                else:
-                    print("[run] smalltv кадър без usage данни (--)")
-            except backend.SmallTvError as exc:
-                print(f"[run] smalltv мрежова грешка (reconnect): {exc}", file=sys.stderr)
-                handle = None
-            except Exception as exc:
-                print(f"[run] цикъл грешка: {type(exc).__name__}: {str(exc)[:160]}", file=sys.stderr)
-                handle = None
+                last_usage = uc.fetch_usage()
+            except uc.UsageError as exc:
+                print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
+            snap = _snapshot()
+            for drv in drivers:  # всеки backend независимо; един падне -> другият върви
+                drv.tick(last_usage, snap)
             time.sleep(INTERVAL)
     except KeyboardInterrupt:
         print("\n[run] спрян")
@@ -199,9 +181,14 @@ def _run_smalltv() -> int:
 
 def main() -> int:
     target = os.environ.get("CLAUDE_USAGE_TARGET", "turing").lower()
+    print(f"[run] target={target} — интервал {INTERVAL}s")
     if target == "smalltv":
-        return _run_smalltv()
-    return _run_turing()
+        drivers = [SmallTvDriver()]
+    elif target == "both":
+        drivers = [TuringDriver(), SmallTvDriver()]
+    else:
+        drivers = [TuringDriver()]
+    return _loop(drivers)
 
 
 if __name__ == "__main__":

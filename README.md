@@ -114,7 +114,9 @@ GeekMagic SmallTV Ultra (240×240) е самостоятелно WiFi устро
 CLAUDE_USAGE_TARGET=smalltv CLAUDE_USAGE_SMALLTV_IP=192.168.100.15 ./.venv/Scripts/python.exe run.py
 ```
 
-`CLAUDE_USAGE_TARGET=turing` (default) кара Turing serial дисплея; `smalltv` — SmallTV по HTTP. И PC-то, и дисплеят трябва да са на една мрежа.
+`CLAUDE_USAGE_TARGET`: `turing` (default) кара serial дисплея; `smalltv` — SmallTV по HTTP; **`both`** — двата едновременно от ЕДИН процес (едно `/usage` викане, не удвоява rate-limit-а; всеки backend с независим error handling). И PC-то, и дисплеят трябва да са на една мрежа.
+
+Autostart task-ът (`tools/start.cmd`) е настроен на **`both`** — кара двата дисплея. Edit-ни `start.cmd` ако искаш само единия.
 
 ### API (reverse-engineer-нат от web UI-то)
 
