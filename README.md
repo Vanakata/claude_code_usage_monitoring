@@ -40,6 +40,25 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 После: вкарай монитора и `./.venv/Scripts/python.exe run.py` (виж "Refresh loop + автостарт" по-долу). Изисква Node (за `ccusage`) и да си логнат в Claude Code (за `/usage` token-а). NB: показва usage-а на акаунта на тази машина.
 
+### Старт на нова машина (служебен лаптоп)
+
+```powershell
+# 1. clone + (ако не е merge-нат в master) feature branch-а
+git clone https://github.com/Vanakata/claude_code_usage_monitoring.git
+cd claude_code_usage_monitoring
+git checkout feat/smalltv-http-transport   # или master, ако PR-ът е merge-нат
+
+# 2. setup (clone на драйвер либ-а + venv + зависимости)
+powershell -ExecutionPolicy Bypass -File setup.ps1
+
+# 3. пусни според дисплея(ите) — env в PowerShell:
+$env:CLAUDE_USAGE_TARGET = "both"                  # turing | smalltv | both
+$env:CLAUDE_USAGE_SMALLTV_IP = "192.168.x.x"       # IP на SmallTV в ТАЗИ мрежа (само за smalltv/both)
+.\.venv\Scripts\python.exe run.py
+```
+
+Помни: трябва Node (`ccusage`) + логнат Claude Code на лаптопа; SmallTV и лаптопът на **една WiFi мрежа**; показва усиджа на акаунта **там** (на API key гейджовете са `--`); autostart task-ът иска admin (за TURMO kill) — без admin пускаш `run.py` ръчно.
+
 ## POC — пускане (display handshake)
 
 Доказва, че serial протоколът (Rev A) + портът (COM5) работят: светва дисплея със статичен текст + число. Никаква ccusage логика.
