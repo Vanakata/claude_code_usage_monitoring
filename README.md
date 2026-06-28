@@ -43,10 +43,9 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 ### Старт на нова машина (служебен лаптоп)
 
 ```powershell
-# 1. clone + (ако не е merge-нат в master) feature branch-а
+# 1. clone (master вече съдържа всичко — dashboard тема + двата transport-а)
 git clone https://github.com/Vanakata/claude_code_usage_monitoring.git
 cd claude_code_usage_monitoring
-git checkout feat/smalltv-http-transport   # или master, ако PR-ът е merge-нат
 
 # 2. setup (clone на драйвер либ-а + venv + зависимости)
 powershell -ExecutionPolicy Bypass -File setup.ps1
