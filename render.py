@@ -137,30 +137,39 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
     for i, ww in enumerate(["S", "M", "T", "W", "T", "F", "S"]):
         d.text((x0 + (i + 0.5) * cw, hy), ww, font=_font(FONT_REG, 11), fill=MUTED, anchor="ma")
 
-    today = now.date()
     reset_d = reset_date.astimezone().date() if reset_date else None
-    # начало на седмицата (неделя) на reset деня — Sunday-first: дни от неделя = (weekday()+1)%7
-    week_start_d = reset_d - timedelta(days=(reset_d.weekday() + 1) % 7) if reset_d else None
-
     weeks = _calmod.Calendar(firstweekday=6).monthdayscalendar(now.year, now.month)
     gy = y0 + 40
     rh = min(18.0, (h - 40) / max(len(weeks), 1))
+
+    # ред на reset седмицата (по reset деня, ако е в текущия месец)
+    reset_row = None
+    if reset_d and reset_d.year == now.year and reset_d.month == now.month:
+        for r, week in enumerate(weeks):
+            if reset_d.day in week:
+                reset_row = r
+                break
+
+    # фон-лента за целия 7-дневен период: green (начало) -> red (reset)
+    if reset_row is not None:
+        by0 = gy + reset_row * rh
+        by1 = by0 + rh
+        span = max(1.0, w)
+        for xi in range(int(x0), int(x0 + w)):
+            t = (xi - x0) / span
+            col = tuple(int(CAL_GREEN[k] + (DB_RED[k] - CAL_GREEN[k]) * t) for k in range(3))
+            d.line([(xi, by0), (xi, by1)], fill=col)
+
     for r, week in enumerate(weeks):
         for c, day in enumerate(week):
             if day == 0:
                 continue
-            cur = date(now.year, now.month, day)
             cx = x0 + (c + 0.5) * cw
             cy = gy + (r + 0.5) * rh
-            if cur == today:  # днес — тийл кръгче (както досега)
-                d.ellipse([cx - 9, cy - 9, cx + 9, cy + 9], fill=TEAL)
-                d.text((cx, cy), str(day), font=_font(FONT_BOLD, 11), fill=(255, 255, 255), anchor="mm")
-            elif cur == reset_d:  # ден на reset — червена цифра
-                d.text((cx, cy), str(day), font=_font(FONT_BOLD, 11), fill=DB_RED, anchor="mm")
-            elif cur == week_start_d:  # начало на reset седмицата — зелена цифра
-                d.text((cx, cy), str(day), font=_font(FONT_BOLD, 11), fill=CAL_GREEN, anchor="mm")
-            else:
-                d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=NAVY, anchor="mm")
+            in_band = r == reset_row
+            d.text((cx, cy), str(day),
+                   font=_font(FONT_BOLD if in_band else FONT_REG, 11),
+                   fill=(255, 255, 255) if in_band else NAVY, anchor="mm")
 
 
 def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
@@ -215,19 +224,22 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
         d.text((cx0 + 16, 212), "week", font=fr(13), fill=MUTED, anchor="lm")
         d.text((w - 24, 212), week_s, font=fb(14), fill=NAVY, anchor="rm")
     else:  # 240x240 (SmallTV)
-        hh = 34
+        hh = 30
         d.rectangle([0, 0, w, hh], fill=NAVY)
-        d.text((8, hh // 2), "CLAUDE", font=fb(15), fill=HEADER_TXT, anchor="lm")
+        d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
         d.text((w - 7, hh // 2), model_label(models), font=fb(12), fill=DB_AMBER, anchor="rm")
 
-        for cx, label, p in ((64, "5H", fhp), (176, "WK", wkp)):
-            draw_ring(d, cx, 96, 40, 11, p, 20)
-            d.text((cx, 140), label, font=fb(13), fill=NAVY, anchor="ma")
+        # пръстени по-нагоре + reset време под всеки (за да се вижда на малкия екран)
+        for cx, label, p, win in ((64, "5H", fhp, fh), (176, "WK", wkp, wk)):
+            draw_ring(d, cx, 74, 36, 11, p, 18)
+            d.text((cx, 114), label, font=fb(13), fill=NAVY, anchor="ma")
+            d.text((cx, 131), uc._fmt_delta(win.remaining()) if win else "--",
+                   font=fr(11), fill=MUTED, anchor="ma")
 
-        d.rounded_rectangle([8, 166, w - 8, 232], radius=8, fill=CARD)
-        d.text((18, 182), f"${cost:.2f}", font=fb(26), fill=NAVY, anchor="lm")
-        d.text((w - 16, 184), f"{cc.format_tokens(tokens)} tok", font=fr(12), fill=MUTED, anchor="rm")
-        d.text((18, 214), f"today ${today:.2f}", font=fr(12), fill=MUTED, anchor="lm")
+        d.rounded_rectangle([8, 152, w - 8, 226], radius=8, fill=CARD)
+        d.text((18, 170), f"${cost:.2f}", font=fb(24), fill=NAVY, anchor="lm")
+        d.text((w - 16, 172), f"{cc.format_tokens(tokens)} tok", font=fr(12), fill=MUTED, anchor="rm")
+        d.text((18, 202), f"today ${today:.2f}", font=fr(12), fill=MUTED, anchor="lm")
     return img
 
 
