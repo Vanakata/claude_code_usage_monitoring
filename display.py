@@ -14,9 +14,9 @@ import os
 import sys
 import time
 import types
+from datetime import date
 
 import serial
-from PIL import Image, ImageDraw
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -31,10 +31,7 @@ from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation, SubRevision  # 
 
 import ccusage_client as cc  # noqa: E402
 import usage_client as uc  # noqa: E402
-from render import (  # noqa: E402  — споделени helpers/цветове (без дублиране)
-    WHITE, DIM, GREEN, AMBER, RED, MODEL,
-    bar_color as _bar_color, model_label as _model_label, draw_segmented,
-)
+import render as render_mod  # noqa: E402  — dashboard renderer (споделен; alias, че да не се сблъска с функцията render())
 
 
 def _safe_open_serial(self):
@@ -64,32 +61,16 @@ COM_PORT = os.environ.get("CLAUDE_USAGE_COM_PORT", "AUTO")
 BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_BRIGHTNESS", "15"))
 WIDTH, HEIGHT = 320, 480  # portrait dims; landscape -> 480x320 след SetOrientation
 
-# --- Asset-и ---
-BG_IMAGE = os.path.join(HERE, "assets", "background.png")  # 480x320 matrix фон
+# Рендерът (dashboard тема, цветове, шрифтове) живее в render.py (споделен с SmallTV).
 
-# --- Шрифтове (абсолютни пътища -> cwd-независими) ---
-_F = os.path.join(LIB_DIR, "res", "fonts", "roboto-mono")
-FONT_REG = os.path.join(_F, "RobotoMono-Regular.ttf")
-FONT_BOLD = os.path.join(_F, "RobotoMono-Bold.ttf")
-
-# Цветове, _bar_color, _model_label, draw_segmented идват от render.py (споделени).
-
-_BG_PIL = None
-
-
-def _bg_pil() -> Image.Image:
-    """Кешира matrix фона (за crop под segmented бара)."""
-    global _BG_PIL
-    if _BG_PIL is None:
-        _BG_PIL = Image.open(BG_IMAGE).convert("RGB")
-    return _BG_PIL
-
-
-def _segmented_bar(lcd, x: int, y: int, w: int, h: int, pct, color, cells: int = 14) -> None:
-    """Turing: crop на matrix фона + segmented клетки (render.draw_segmented) + push."""
-    img = _bg_pil().crop((x, y, x + w, y + h)).copy()
-    draw_segmented(ImageDraw.Draw(img), 0, 0, w, h, pct, color, cells=cells)
-    lcd.DisplayPILImage(img, x, y)
+# Динамични региони (480x320 dashboard), които render() обновява всеки цикъл
+# (фонът/header/календарът са в пълния кадър, рисуван при connect / смяна на ден).
+_DYN_REGIONS = [
+    (40, 54, 124, 168),    # 5H пръстен + label + reset
+    (156, 54, 240, 168),   # WK пръстен + label + reset
+    (300, 4, 468, 42),     # активен модел (header дясно)
+    (304, 84, 470, 230),   # SESSION стойности (cost/tokens/today/week)
+]
 
 
 def _resilient_write_line(self, line: bytes) -> None:
@@ -142,62 +123,26 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
     lcd.SetBrightness(level=BRIGHTNESS)
     lcd.Clear()  # вътрешно връща PORTRAIT
     lcd.SetOrientation(orientation=Orientation.REVERSE_LANDSCAPE)  # 480x320, обърнато 180°
-    draw_static(lcd)  # фон + статични етикети ВЕДНЪЖ (виж draw_static)
+    lcd._dash_base = False  # render() ще нарисува пълния кадър при първото извикване
+    lcd._dash_day = None
     return lcd
 
 
-def _txt(lcd, text, x, y, size, color, bold=True):
-    lcd.DisplayText(text, x, y, font=FONT_BOLD if bold else FONT_REG, font_size=size,
-                    font_color=color, background_image=BG_IMAGE)
-
-
-def draw_static(lcd: LcdCommRevA) -> None:
-    """Рисува фона + НЕпроменящите се елементи ВЕДНЪЖ (при connect/reconnect).
-
-    Така render() не преначертава целия екран всеки цикъл (което насича по serial) —
-    обновява само малките динамични полета.
-    """
-    lcd.DisplayBitmap(BG_IMAGE)
-    _txt(lcd, "CLAUDE USAGE", 12, 8, 26, WHITE)
-    _txt(lcd, "5H", 12, 58, 24, DIM)
-    _txt(lcd, "WK", 12, 140, 24, DIM)
-    _txt(lcd, "SESSION", 12, 224, 20, DIM)
-
-
-def _gauge(lcd: LcdCommRevA, y: int, pct, reset_txt: str) -> None:
-    """Динамичната част на gauge: %, reset, бар. Фиксирана ширина -> без ghosting."""
-    has = pct is not None
-    color = _bar_color(pct) if has else DIM
-    _txt(lcd, f"{pct:>3.0f}%" if has else "  --", 64, y, 34, color)
-    _txt(lcd, f"resets {reset_txt:<6}", 250, y + 10, 18, DIM, bold=False)
-    _segmented_bar(lcd, 12, y + 46, 456, 22, pct, color)
-
-
 def render(lcd: LcdCommRevA, usage, snap) -> None:
-    """Обновява само ДИНАМИЧНИТЕ полета (фонът/етикетите са от draw_static).
+    """Dashboard рендер (480x320), инкрементален -> без насичане.
 
-    usage може да е None (-> '--'). Всички полета са с фиксирана ширина, за да
-    презапишат старата стойност изцяло (иначе остатъци ghost-ват без пълен redraw).
+    Пълен кадър (вкл. календар) се рисува при connect и при смяна на ден; иначе
+    се обновяват само динамичните региони (пръстени/модел/SESSION стойности).
     """
-    fh = usage.five_hour if usage else None
-    wk = usage.seven_day if usage else None
-    _gauge(lcd, 52, fh.utilization if fh else None,
-           uc._fmt_delta(fh.remaining()) if fh else "--")
-    _gauge(lcd, 134, wk.utilization if wk else None,
-           uc._fmt_delta(wk.remaining()) if wk else "--")
-
-    # --- активен модел (горе вдясно, от ccusage block) ---
-    models = snap.block.models if snap and snap.block else []
-    _txt(lcd, f"{_model_label(models):>11}", 270, 16, 20, MODEL)
-
-    # --- SESSION (активен блок, от ccusage) ---
-    block_cost = snap.block.cost_usd if snap and snap.block else 0.0
-    block_tokens = snap.block.total_tokens if snap and snap.block else 0
-    _txt(lcd, f"${block_cost:>6.2f}", 12, 252, 40, WHITE)
-    _txt(lcd, f"{cc.format_tokens(block_tokens):>6} tok", 250, 264, 28, WHITE)
-
-    today = snap.daily.today_cost if snap else 0.0
-    _txt(lcd, f"today ${today:>6.2f}", 12, 300, 16, DIM, bold=False)
+    frame = render_mod.render_dashboard(usage, snap, 480, 320)
+    today = date.today()
+    if not getattr(lcd, "_dash_base", False) or getattr(lcd, "_dash_day", None) != today:
+        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър веднъж / при нов ден
+        lcd._dash_base = True
+        lcd._dash_day = today
+    else:
+        for (x, y, x2, y2) in _DYN_REGIONS:
+            lcd.DisplayPILImage(frame.crop((x, y, x2, y2)), x, y)
 
 
 def render_once() -> int:

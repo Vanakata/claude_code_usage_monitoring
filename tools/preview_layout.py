@@ -58,8 +58,7 @@ snap = cc.Snapshot(has_active_block=True, block=block,
                    generated_at=now)
 
 fake = FakeLcd()
-d.draw_static(fake)
-d.render(fake, usage, snap)
+d.render(fake, usage, snap)  # render() рисува пълния dashboard кадър при първо извикване
 out = os.path.join(ROOT, "work", "bg-previews", "layout_preview.png")
 fake.canvas.save(out)
 print("wrote", out)
