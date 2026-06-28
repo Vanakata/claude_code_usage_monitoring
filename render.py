@@ -90,17 +90,18 @@ def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
     return _FONTS[key]
 
 
-# --- Dashboard тема (clean, light, радиални пръстени) ---
-DB_BG = (236, 239, 243)       # светъл фон
-CARD = (255, 255, 255)        # бяла карта
-NAVY = (28, 42, 74)           # header / основен текст
-HEADER_TXT = (244, 247, 250)
-DB_AMBER = (245, 166, 35)     # accent (модел)
-TEAL = (26, 150, 150)         # ring нисък %
-MUTED = (122, 134, 152)       # вторичен текст
-RING_TRACK = (220, 225, 232)  # празна част на пръстена
-DB_RED = (220, 70, 70)
-CAL_GREEN = (46, 170, 90)      # календар: начало на reset седмицата
+# --- Dashboard тема (DARK, радиални пръстени) ---
+DB_BG = (16, 20, 30)          # тъмен фон
+CARD = (28, 34, 50)           # тъмна карта
+NAVY = (22, 28, 46)           # header лента (тъмно navy)
+TXT = (226, 231, 240)         # основен светъл текст
+HEADER_TXT = (236, 240, 248)
+DB_AMBER = (245, 175, 55)     # accent (модел)
+TEAL = (38, 178, 170)         # ring нисък %
+MUTED = (142, 152, 172)       # вторичен текст
+RING_TRACK = (45, 53, 72)     # празна част на пръстена
+DB_RED = (228, 82, 82)
+CAL_GREEN = (60, 185, 105)    # календар: начало на reset седмицата
 
 
 def _ring_color(pct) -> tuple:
@@ -121,7 +122,7 @@ def draw_ring(d: ImageDraw.ImageDraw, cx: int, cy: int, r: int, th: int, pct, pc
     if pct is not None and pct > 0:
         d.arc(box, -90, -90 + min(100.0, pct) / 100.0 * 360.0, fill=_ring_color(pct), width=th)
     s = f"{pct:.0f}%" if pct is not None else "--"
-    d.text((cx, cy), s, font=_font(FONT_BOLD, pct_size), fill=NAVY, anchor="mm")
+    d.text((cx, cy), s, font=_font(FONT_BOLD, pct_size), fill=TXT, anchor="mm")
 
 
 def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now: datetime,
@@ -136,7 +137,7 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
     anchor = reset_d if reset_d else now.date()
 
     d.text((x0 + w / 2, y0), anchor.strftime("%B %Y").upper(), font=_font(FONT_BOLD, 13),
-           fill=NAVY, anchor="ma")
+           fill=TXT, anchor="ma")
     hy = y0 + 22
     for i, ww in enumerate(["S", "M", "T", "W", "T", "F", "S"]):
         d.text((x0 + (i + 0.5) * cw, hy), ww, font=_font(FONT_REG, 11), fill=MUTED, anchor="ma")
@@ -176,7 +177,7 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
                 d.text((cx, cy), str(dnum), font=_font(FONT_BOLD, 11),
                        fill=(255, 255, 255), anchor="mm")
             elif day != 0:
-                d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=NAVY, anchor="mm")
+                d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=TXT, anchor="mm")
 
 
 def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
@@ -209,7 +210,7 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
         # пръстени (горе-ляво)
         for cx, label, p, win in ((80, "5H", fhp, fh), (196, "WK", wkp, wk)):
             draw_ring(d, cx, 96, 37, 10, p, 19)
-            d.text((cx, 138), label, font=fb(15), fill=NAVY, anchor="ma")
+            d.text((cx, 138), label, font=fb(15), fill=TXT, anchor="ma")
             d.text((cx, 156), uc._fmt_delta(win.remaining()) if win else "--",
                    font=fr(11), fill=MUTED, anchor="ma")
 
@@ -222,14 +223,14 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
         cx0 = 302
         d.rounded_rectangle([cx0, 52, w - 10, h - 8], radius=12, fill=CARD)
         d.text((cx0 + 16, 70), "SESSION", font=fb(14), fill=MUTED, anchor="lm")
-        d.text((cx0 + 16, 102), f"${cost:.2f}", font=fb(28), fill=NAVY, anchor="lm")
+        d.text((cx0 + 16, 102), f"${cost:.2f}", font=fb(28), fill=TXT, anchor="lm")
         d.text((cx0 + 16, 136), f"{cc.format_tokens(tokens)} tok", font=fr(14), fill=MUTED, anchor="lm")
         d.line([cx0 + 16, 160, w - 24, 160], fill=RING_TRACK, width=1)
         d.text((cx0 + 16, 184), "today", font=fr(13), fill=MUTED, anchor="lm")
-        d.text((w - 24, 184), f"${today:.2f}", font=fb(14), fill=NAVY, anchor="rm")
+        d.text((w - 24, 184), f"${today:.2f}", font=fb(14), fill=TXT, anchor="rm")
         week_s = f"${snap.daily.week_cost:.0f}" if snap else "--"
         d.text((cx0 + 16, 212), "week", font=fr(13), fill=MUTED, anchor="lm")
-        d.text((w - 24, 212), week_s, font=fb(14), fill=NAVY, anchor="rm")
+        d.text((w - 24, 212), week_s, font=fb(14), fill=TXT, anchor="rm")
     else:  # 240x240 (SmallTV)
         hh = 30
         d.rectangle([0, 0, w, hh], fill=NAVY)
@@ -239,12 +240,12 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
         # пръстени по-нагоре + reset време под всеки (за да се вижда на малкия екран)
         for cx, label, p, win in ((64, "5H", fhp, fh), (176, "WK", wkp, wk)):
             draw_ring(d, cx, 74, 36, 11, p, 18)
-            d.text((cx, 114), label, font=fb(13), fill=NAVY, anchor="ma")
+            d.text((cx, 114), label, font=fb(13), fill=TXT, anchor="ma")
             d.text((cx, 131), uc._fmt_delta(win.remaining()) if win else "--",
                    font=fr(11), fill=MUTED, anchor="ma")
 
         d.rounded_rectangle([8, 152, w - 8, 226], radius=8, fill=CARD)
-        d.text((18, 170), f"${cost:.2f}", font=fb(24), fill=NAVY, anchor="lm")
+        d.text((18, 170), f"${cost:.2f}", font=fb(24), fill=TXT, anchor="lm")
         d.text((w - 16, 172), f"{cc.format_tokens(tokens)} tok", font=fr(12), fill=MUTED, anchor="rm")
         d.text((18, 202), f"today ${today:.2f}", font=fr(12), fill=MUTED, anchor="lm")
     return img
