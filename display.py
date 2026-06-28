@@ -136,10 +136,18 @@ def render(lcd: LcdCommRevA, usage, snap) -> None:
     """
     frame = render_mod.render_dashboard(usage, snap, 480, 320)
     today = date.today()
-    if not getattr(lcd, "_dash_base", False) or getattr(lcd, "_dash_day", None) != today:
-        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър веднъж / при нов ден
+    wk = usage.seven_day if usage else None
+    # ключ за календарната лента — сменя ли се reset датата (вкл. None->дата при идване
+    # на данните след 429), трябва пълен redraw, иначе лентата няма да се появи
+    reset_key = wk.resets_at.astimezone().date() if (wk and wk.resets_at) else None
+    need_full = (not getattr(lcd, "_dash_base", False)
+                 or getattr(lcd, "_dash_day", None) != today
+                 or getattr(lcd, "_dash_reset", "init") != reset_key)
+    if need_full:
+        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър (вкл. календар) при connect/нов ден/нов reset
         lcd._dash_base = True
         lcd._dash_day = today
+        lcd._dash_reset = reset_key
     else:
         for (x, y, x2, y2) in _DYN_REGIONS:
             lcd.DisplayPILImage(frame.crop((x, y, x2, y2)), x, y)
