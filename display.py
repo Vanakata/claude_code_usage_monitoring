@@ -11,11 +11,13 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 import types
 
 import serial
+from PIL import Image, ImageDraw
 
 try:
     sys.stdout.reconfigure(encoding="utf-8")
@@ -73,6 +75,7 @@ DIM = (150, 150, 150)
 GREEN = (0, 220, 90)
 AMBER = (240, 180, 0)
 RED = (235, 60, 60)
+MODEL = (120, 235, 160)  # активен модел (горе вдясно)
 
 
 def _bar_color(pct: float) -> tuple:
@@ -82,6 +85,53 @@ def _bar_color(pct: float) -> tuple:
     if pct >= 70:
         return AMBER
     return GREEN
+
+
+_BG_PIL = None
+
+
+def _bg_pil() -> Image.Image:
+    """Кешира matrix фона (за crop под segmented бара)."""
+    global _BG_PIL
+    if _BG_PIL is None:
+        _BG_PIL = Image.open(BG_IMAGE).convert("RGB")
+    return _BG_PIL
+
+
+def _segmented_bar(lcd, x: int, y: int, w: int, h: int, pct, color, cells: int = 14) -> None:
+    """Модерен segmented бар: дискретни клетки върху matrix фона.
+
+    Пълните клетки са плътен цвят, празните — тънък контур (matrix-ът прозира).
+    """
+    p = max(0.0, min(100.0, pct)) if pct is not None else 0.0
+    filled = int(round(p / 100.0 * cells))
+    img = _bg_pil().crop((x, y, x + w, y + h)).copy()
+    d = ImageDraw.Draw(img)
+    gap = 4
+    cw = (w - gap * (cells - 1)) / cells
+    empty_outline = (35, 80, 50)
+    for i in range(cells):
+        cx0 = int(round(i * (cw + gap)))
+        cx1 = int(round(cx0 + cw))
+        box = [cx0, 0, cx1, h - 1]
+        if i < filled:
+            d.rounded_rectangle(box, radius=3, fill=color)
+        else:
+            d.rounded_rectangle(box, radius=3, outline=empty_outline, width=1)
+    lcd.DisplayPILImage(img, x, y)
+
+
+def _model_label(models) -> str:
+    """['claude-opus-4-8'] -> 'Opus 4.8'. При няколко — най-силния (opus>sonnet>haiku)."""
+    if not models:
+        return "--"
+    rank = {"opus": 0, "sonnet": 1, "haiku": 2}
+    top = min(models, key=lambda m: next((v for k, v in rank.items() if k in m), 9))
+    fam = next((k for k in rank if k in top), None)
+    nums = re.findall(r"\d+", top)
+    if fam and len(nums) >= 2:
+        return f"{fam.capitalize()} {nums[0]}.{nums[1]}"
+    return top
 
 
 def _resilient_write_line(self, line: bytes) -> None:
@@ -162,9 +212,7 @@ def _gauge(lcd: LcdCommRevA, y: int, pct, reset_txt: str) -> None:
     color = _bar_color(pct) if has else DIM
     _txt(lcd, f"{pct:>3.0f}%" if has else "  --", 64, y, 34, color)
     _txt(lcd, f"resets {reset_txt:<6}", 250, y + 10, 18, DIM, bold=False)
-    lcd.DisplayProgressBar(12, y + 46, width=456, height=22, min_value=0, max_value=100,
-                           value=int(min(100.0, max(0.0, pct))) if has else 0, bar_color=color,
-                           bar_outline=True, background_image=BG_IMAGE)
+    _segmented_bar(lcd, 12, y + 46, 456, 22, pct, color)
 
 
 def render(lcd: LcdCommRevA, usage, snap) -> None:
@@ -179,6 +227,10 @@ def render(lcd: LcdCommRevA, usage, snap) -> None:
            uc._fmt_delta(fh.remaining()) if fh else "--")
     _gauge(lcd, 134, wk.utilization if wk else None,
            uc._fmt_delta(wk.remaining()) if wk else "--")
+
+    # --- активен модел (горе вдясно, от ccusage block) ---
+    models = snap.block.models if snap and snap.block else []
+    _txt(lcd, f"{_model_label(models):>11}", 270, 16, 20, MODEL)
 
     # --- SESSION (активен блок, от ccusage) ---
     block_cost = snap.block.cost_usd if snap and snap.block else 0.0
