@@ -22,7 +22,7 @@ from PIL import Image  # noqa: E402
 from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation  # noqa: E402
 
 # Hardware (разузнато 2026-06-19, виж README)
-COM_PORT = "COM5"
+COM_PORT = os.environ.get("CLAUDE_USAGE_COM_PORT", "COM5")
 # Размери за PORTRAIT ориентация; landscape се прави през SetOrientation по-долу.
 WIDTH, HEIGHT = 320, 480
 
