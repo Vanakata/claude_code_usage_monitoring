@@ -31,6 +31,7 @@ from library.lcd.lcd_comm_rev_a import LcdCommRevA, Orientation, SubRevision  # 
 
 import ccusage_client as cc  # noqa: E402
 import usage_client as uc  # noqa: E402
+import profile_client as pc  # noqa: E402  — email/org (header overlay)
 import render as render_mod  # noqa: E402  — dashboard renderer (споделен; alias, че да не се сблъска с функцията render())
 
 
@@ -125,6 +126,13 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
     lcd.SetOrientation(orientation=Orientation.REVERSE_LANDSCAPE)  # 480x320, обърнато 180°
     lcd._dash_base = False  # render() ще нарисува пълния кадър при първото извикване
     lcd._dash_day = None
+    # profile (email/org) — fail-soft: при network/endpoint грешка просто не показваме email
+    try:
+        lcd._profile = pc.fetch_profile()
+        print(f"[display] profile: {lcd._profile.email} ({lcd._profile.org_name})")
+    except pc.ProfileError as exc:
+        print(f"[display] profile fetch неуспешен (продължавам без email): {exc}")
+        lcd._profile = None
     return lcd
 
 
@@ -134,7 +142,7 @@ def render(lcd: LcdCommRevA, usage, snap) -> None:
     Пълен кадър (вкл. календар) се рисува при connect и при смяна на ден; иначе
     се обновяват само динамичните региони (пръстени/модел/SESSION стойности).
     """
-    frame = render_mod.render_dashboard(usage, snap, 480, 320)
+    frame = render_mod.render_dashboard(usage, snap, 480, 320, profile=getattr(lcd, "_profile", None))
     today = date.today()
     wk = usage.seven_day if usage else None
     # ключ за календарната лента — сменя ли се reset датата (вкл. None->дата при идване

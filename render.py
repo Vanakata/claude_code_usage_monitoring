@@ -227,7 +227,7 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
                 d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=TXT, anchor="mm")
 
 
-def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
+def render_dashboard(usage, snap, w: int, h: int, profile=None) -> Image.Image:
     """Dashboard кадър (радиални %-пръстени). Тема по часа (light денем / dark вечер)."""
     _apply_theme(theme_for_now())
     img = Image.new("RGB", (w, h), DB_BG)
@@ -264,7 +264,11 @@ def render_dashboard(usage, snap, w: int, h: int) -> Image.Image:
                    fill=(255, 235, 235), anchor="rm")
         else:
             d.text((16, hh // 2), "CLAUDE USAGE", font=fb(20), fill=HEADER_TXT, anchor="lm")
-            d.text((w - 14, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="rm")
+            if profile and profile.email:
+                d.text((w // 2, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="mm")
+                d.text((w - 14, hh // 2), profile.email, font=fr(13), fill=HEADER_TXT, anchor="rm")
+            else:
+                d.text((w - 14, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="rm")
 
         # пръстени (горе-ляво)
         for cx, label, p, win in ((80, "5H", fhp, fh), (196, "WK", wkp, wk)):
