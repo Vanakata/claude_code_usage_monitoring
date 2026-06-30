@@ -25,6 +25,7 @@ import urllib.request
 from PIL import Image
 
 import ccusage_client as cc
+import profile_client as pc
 import render as render_mod
 import usage_client as uc
 
@@ -47,6 +48,7 @@ class SmallTvError(RuntimeError):
 
 
 _bg = None
+_profile = None  # кеширан Claude profile (email/org), fetch-ва се веднъж при connect()
 
 
 def _bg_img() -> Image.Image:
@@ -96,16 +98,24 @@ def cleanup() -> None:
 
 def connect(_port: str = "") -> str:
     """Setup (веднъж): cleanup + Photo Album + изключи image auto-display."""
+    global _profile
     print(f"[smalltv] {BASE} — setup (theme=3, autoplay off)")
     cleanup()
     _get("/set?theme=3")              # Photo Album режим
     _get("/set?i_i=3600&autoplay=0")  # без авто-ротация на картинките
+    # profile (email/org) — fail-soft: при network/endpoint грешка просто не показваме email
+    try:
+        _profile = pc.fetch_profile()
+        print(f"[smalltv] profile: {_profile.email} ({_profile.org_name})")
+    except pc.ProfileError as exc:
+        print(f"[smalltv] profile fetch неуспешен (продължавам без email): {exc}")
+        _profile = None
     return BASE
 
 
 def render(_handle, usage, snap) -> None:
     """Рендира 240x240 кадър и го push-ва: upload -> show."""
-    frame = render_mod.render_smalltv(usage, snap, _bg_img())
+    frame = render_mod.render_smalltv(usage, snap, _bg_img(), profile=_profile)
     buf = io.BytesIO()
     frame.save(buf, format="JPEG", quality=JPEG_QUALITY)
     _upload_jpeg(buf.getvalue())

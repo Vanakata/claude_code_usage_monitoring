@@ -302,7 +302,10 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None) -> Image.Image:
             d.text((26, hh // 2), "LIMIT " + " ".join(breaches), font=fb(12),
                    fill=(255, 255, 255), anchor="lm")
         else:
-            d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
+            if profile and profile.email:
+                d.text((8, hh // 2), profile.email, font=fr(11), fill=HEADER_TXT, anchor="lm")
+            else:
+                d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
             d.text((w - 7, hh // 2), model_label(models), font=fb(12), fill=DB_AMBER, anchor="rm")
 
         # САМО пръстени (по-големи, за по-добра четимост) + reset време; без cost/tokens
@@ -320,6 +323,6 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None) -> Image.Image:
     return img
 
 
-def render_smalltv(usage, snap, bg=None) -> Image.Image:
+def render_smalltv(usage, snap, bg=None, profile=None) -> Image.Image:
     """SmallTV 240x240 кадър (dashboard тема). `bg` се игнорира (light тема)."""
-    return render_dashboard(usage, snap, 240, 240)
+    return render_dashboard(usage, snap, 240, 240, profile=profile)
