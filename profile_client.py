@@ -12,11 +12,13 @@ Reverse-engineer-нат (същия pattern като /api/oauth/usage). Може
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from typing import Optional
 
-from usage_client import OAUTH_BETA, UsageError, _read_token, refresh_token
+from usage_client import CREDENTIALS_PATH, OAUTH_BETA, UsageError, _read_token, refresh_token
 
 PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
 
@@ -72,6 +74,36 @@ def fetch_profile() -> Profile:
         full_name=acc.get("full_name") or "",
         org_name=org.get("name") or "",
     )
+
+
+# --- mtime-based cache (за да реагираме на `claude login` без рестарт) ---
+# Викаме fetch_profile() само когато credentials.json mtime се е променил —
+# така един и същ профил не се дърпа по мрежата на всеки tick, но смяна на
+# акаунт (с `claude login` -> пренаписва credentials) се хваща веднага.
+_cache: Optional[Profile] = None
+_cache_mtime: float = 0.0
+
+
+def get_profile() -> Optional[Profile]:
+    """Връща profile; refresh-ва САМО ако credentials.json е променен.
+
+    Fail-soft: при ProfileError връща предишния кеширан profile (или None ако
+    още няма успешно дърпан). mtime не се update-ва при грешка → следващият
+    tick ще опита пак.
+    """
+    global _cache, _cache_mtime
+    try:
+        mt = os.path.getmtime(CREDENTIALS_PATH)
+    except OSError:
+        return _cache  # няма файл -> върни каквото имаме (или None)
+    if mt == _cache_mtime and _cache is not None:
+        return _cache
+    try:
+        _cache = fetch_profile()
+        _cache_mtime = mt
+    except ProfileError:
+        pass  # запазваме стария кеш; следващият tick ще опита пак
+    return _cache
 
 
 if __name__ == "__main__":

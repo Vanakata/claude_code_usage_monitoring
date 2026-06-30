@@ -126,13 +126,6 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
     lcd.SetOrientation(orientation=Orientation.REVERSE_LANDSCAPE)  # 480x320, обърнато 180°
     lcd._dash_base = False  # render() ще нарисува пълния кадър при първото извикване
     lcd._dash_day = None
-    # profile (email/org) — fail-soft: при network/endpoint грешка просто не показваме email
-    try:
-        lcd._profile = pc.fetch_profile()
-        print(f"[display] profile: {lcd._profile.email} ({lcd._profile.org_name})")
-    except pc.ProfileError as exc:
-        print(f"[display] profile fetch неуспешен (продължавам без email): {exc}")
-        lcd._profile = None
     return lcd
 
 
@@ -141,8 +134,10 @@ def render(lcd: LcdCommRevA, usage, snap) -> None:
 
     Пълен кадър (вкл. календар) се рисува при connect и при смяна на ден; иначе
     се обновяват само динамичните региони (пръстени/модел/SESSION стойности).
+    Profile (email/org) се чете на всеки tick (mtime-кеш → реагира на claude login).
     """
-    frame = render_mod.render_dashboard(usage, snap, 480, 320, profile=getattr(lcd, "_profile", None))
+    profile = pc.get_profile()
+    frame = render_mod.render_dashboard(usage, snap, 480, 320, profile=profile)
     today = date.today()
     wk = usage.seven_day if usage else None
     # ключ за календарната лента — сменя ли се reset датата (вкл. None->дата при идване
@@ -150,18 +145,21 @@ def render(lcd: LcdCommRevA, usage, snap) -> None:
     reset_key = wk.resets_at.astimezone().date() if (wk and wk.resets_at) else None
     theme = render_mod.theme_for_now()  # смяна на тема (ден/нощ) -> пълен redraw
     alarm_now = bool(render_mod.alarm_breaches(usage))  # аларма -> рамка/червен header
+    email = profile.email if profile else None  # email е в header-а (статичен регион)
     need_full = (not getattr(lcd, "_dash_base", False)
                  or getattr(lcd, "_dash_day", None) != today
                  or getattr(lcd, "_dash_reset", "init") != reset_key
                  or getattr(lcd, "_dash_theme", "init") != theme
-                 or alarm_now or getattr(lcd, "_dash_alarm", False) != alarm_now)
+                 or alarm_now or getattr(lcd, "_dash_alarm", False) != alarm_now
+                 or getattr(lcd, "_dash_email", "init") != email)
     if need_full:
-        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър при connect/ден/reset/тема/аларма
+        lcd.DisplayPILImage(frame, 0, 0)   # пълен кадър при connect/ден/reset/тема/аларма/email
         lcd._dash_base = True
         lcd._dash_day = today
         lcd._dash_reset = reset_key
         lcd._dash_theme = theme
         lcd._dash_alarm = alarm_now
+        lcd._dash_email = email
     else:
         for (x, y, x2, y2) in _DYN_REGIONS:
             lcd.DisplayPILImage(frame.crop((x, y, x2, y2)), x, y)
