@@ -35,6 +35,8 @@ IMG_DIR = "/image/"
 IMG_NAME = "dashboard.jpg"
 IMG_PATH = IMG_DIR + IMG_NAME
 JPEG_QUALITY = 90
+# Яркост (-10..100, reverse-engineer-нат от web UI: `name="brt"`). 10 е default-а на Ванака.
+BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_SMALLTV_BRIGHTNESS", "10"))
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BG_240 = os.path.join(HERE, "assets", "background_240.png")
@@ -97,10 +99,11 @@ def cleanup() -> None:
 
 def connect(_port: str = "") -> str:
     """Setup (веднъж): cleanup + Photo Album + изключи image auto-display."""
-    print(f"[smalltv] {BASE} — setup (theme=3, autoplay off)")
+    print(f"[smalltv] {BASE} — setup (theme=3, autoplay off, brt={BRIGHTNESS})")
     cleanup()
     _get("/set?theme=3")              # Photo Album режим
     _get("/set?i_i=3600&autoplay=0")  # без авто-ротация на картинките
+    _get(f"/set?brt={BRIGHTNESS}")    # яркост (default 10 → приятно за вечер)
     return BASE
 
 

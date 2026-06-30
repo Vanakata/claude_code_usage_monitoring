@@ -37,6 +37,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 | `CLAUDE_USAGE_COM_PORT` | `AUTO` | override; AUTO търси VID/PID `1A86:5722` |
 | `CLAUDE_USAGE_BRIGHTNESS` | `15` | 0–255 (Turing) |
 | `CLAUDE_USAGE_SMALLTV_IP` | `192.168.100.15` | IP в текущата мрежа |
+| `CLAUDE_USAGE_SMALLTV_BRIGHTNESS` | `10` | −10..100 (SmallTV `/set?brt=`) |
 | `CLAUDE_USAGE_THEME` | `auto` | `light` / `dark` / `auto` (по час) |
 | `CLAUDE_USAGE_DAY_START` / `_DAY_END` | `7` / `19` | граници за auto theme |
 | `CLAUDE_USAGE_ALARM_PCT` | `95` | праг за червена аларма + рамка |
@@ -63,7 +64,7 @@ profile_client  ─┘                                ▲
   1. `LcdCommRevA.openSerial` — оригиналът прави `os._exit(0)` при липсващ/зает порт (нехванаем kill с код 0 → Task Scheduler не рестартира). Patch-нат → `raise SerialException` → `run.py` reconnect.
   2. `WriteLine` (`_resilient_write_line`) — при serial срив насред bitmap вдига `_needs_reinit`; `run.py` го вижда и прави чист HELLO-resync + Clear + orientation на следващия тик, иначе кадърът е разместен в portrait.
   Рендира **инкрементално** — пълен кадър само при connect / смяна на ден / reset / тема / аларма (виж `_DYN_REGIONS`).
-- **`display_smalltv.py`** — JPEG (не PNG!) → multipart POST на `/doUpload?dir=/image/` с фиксирано име `dashboard.jpg` (презапис, не трупане на flash) → `GET /set?img=...`. При `connect()`: cleanup на наши файлове (НЕ user pics) + `theme=3` (Photo Album) + `i_i=3600&autoplay=0` (без авто-ротация).
+- **`display_smalltv.py`** — JPEG (не PNG!) → multipart POST на `/doUpload?dir=/image/` с фиксирано име `dashboard.jpg` (презапис, не трупане на flash) → `GET /set?img=...`. При `connect()`: cleanup на наши файлове (НЕ user pics) + `theme=3` (Photo Album) + `i_i=3600&autoplay=0` (без авто-ротация) + `brt=<N>` (яркост, default 10). Brightness endpoint-ът е `/set?brt=N`, N: −10..100.
 - **`turing-smart-screen-python/`** е external dep — clone-ва се при setup, **не** е committed (`.gitignore`). Patch-вай на runtime от `display.py`, не вътре в clone-а.
 
 ## Reverse-engineered endpoints (крехки)
