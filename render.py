@@ -13,7 +13,7 @@ from __future__ import annotations
 import calendar as _calmod
 import os
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -101,20 +101,19 @@ TEAL = (38, 178, 170)         # ring нисък %
 MUTED = (142, 152, 172)       # вторичен текст
 RING_TRACK = (45, 53, 72)     # празна част на пръстена
 DB_RED = (228, 82, 82)
-CAL_GREEN = (60, 185, 105)    # календар: начало на reset седмицата
 
 
 def _apply_theme(mode: str) -> None:
     """Сетва цветовете на палитрата (light / dark)."""
-    global DB_BG, CARD, NAVY, TXT, HEADER_TXT, DB_AMBER, TEAL, MUTED, RING_TRACK, DB_RED, CAL_GREEN
+    global DB_BG, CARD, NAVY, TXT, HEADER_TXT, DB_AMBER, TEAL, MUTED, RING_TRACK, DB_RED
     if mode == "light":
         DB_BG, CARD, NAVY, TXT = (236, 239, 243), (255, 255, 255), (28, 42, 74), (28, 42, 74)
         HEADER_TXT, DB_AMBER, TEAL = (244, 247, 250), (245, 166, 35), (26, 150, 150)
-        MUTED, RING_TRACK, DB_RED, CAL_GREEN = (122, 134, 152), (220, 225, 232), (220, 70, 70), (46, 170, 90)
+        MUTED, RING_TRACK, DB_RED = (122, 134, 152), (220, 225, 232), (220, 70, 70)
     else:  # dark
         DB_BG, CARD, NAVY, TXT = (16, 20, 30), (28, 34, 50), (22, 28, 46), (226, 231, 240)
         HEADER_TXT, DB_AMBER, TEAL = (236, 240, 248), (245, 175, 55), (38, 178, 170)
-        MUTED, RING_TRACK, DB_RED, CAL_GREEN = (142, 152, 172), (45, 53, 72), (228, 82, 82), (60, 185, 105)
+        MUTED, RING_TRACK, DB_RED = (142, 152, 172), (45, 53, 72), (228, 82, 82)
 
 
 def theme_for_now() -> str:
@@ -174,13 +173,11 @@ def draw_ring(d: ImageDraw.ImageDraw, cx: int, cy: int, r: int, th: int, pct, pc
 
 def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now: datetime,
                   reset_date=None) -> None:
-    """Месечен календар (Sunday-first). Цветни кръгчета:
-    тийл=днес, червено=ден на weekly reset, зелено=началото (неделя) на reset седмицата.
-    """
+    """Месечен календар (Sunday-first). Червен pill върху деня на weekly reset."""
     cols = 7
     cw = w / cols
     reset_d = reset_date.astimezone().date() if reset_date else None
-    # календарът показва МЕСЕЦА НА RESET-а (иначе при reset в следващ месец лентата не се вижда)
+    # календарът показва МЕСЕЦА НА RESET-а (иначе при reset в следващ месец не се вижда)
     anchor = reset_d if reset_d else now.date()
 
     d.text((x0 + w / 2, y0), anchor.strftime("%B %Y").upper(), font=_font(FONT_BOLD, 13),
@@ -193,43 +190,20 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
     gy = y0 + 40
     rh = min(18.0, (h - 40) / max(len(weeks), 1))
 
-    # ред на reset седмицата (reset денят винаги е в показания месец)
-    reset_row = None
-    if reset_d:
-        for r, week in enumerate(weeks):
-            if reset_d.day in week:
-                reset_row = r
-                break
-
-    # фон-лента за целия 7-дневен период: green (начало) -> red (reset)
-    if reset_row is not None:
-        by0 = gy + reset_row * rh
-        by1 = by0 + rh
-        span = max(1.0, w)
-        for xi in range(int(x0), int(x0 + w)):
-            t = (xi - x0) / span
-            col = tuple(int(CAL_GREEN[k] + (DB_RED[k] - CAL_GREEN[k]) * t) for k in range(3))
-            d.line([(xi, by0), (xi, by1)], fill=col)
-
-    # неделята на reset седмицата (за да покажем целите 7 дни, дори от съседен месец)
-    week_sunday = reset_d - timedelta(days=(reset_d.weekday() + 1) % 7) if reset_d else None
-
     for r, week in enumerate(weeks):
         for c, day in enumerate(week):
+            if day == 0:
+                continue
             cx = x0 + (c + 0.5) * cw
             cy = gy + (r + 0.5) * rh
-            if r == reset_row and week_sunday is not None:
-                # цялата reset седмица — реални дати, вкл. дни от другия месец
-                cell_date = week_sunday + timedelta(days=c)
-                if cell_date == reset_d:
-                    # плътен pill на reset деня: gradient-ът покрива цялата Sun-Sat седмица,
-                    # без този marker не се вижда КОЙ ден в реда е reset-ът (Fri vs Sat
-                    # изглеждат еднакво, защото червеният край на gradient-а винаги е събота)
-                    pr = min(rh, cw) * 0.42
-                    d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=DB_RED)
-                d.text((cx, cy), str(cell_date.day), font=_font(FONT_BOLD, 11),
+            if reset_d is not None and day == reset_d.day:
+                # solid червен pill: маркира конкретния weekly-reset ден. anchor.month
+                # e reset_d.month, а `day != 0` иска ден от anchor месеца -> уникално
+                pr = min(rh, cw) * 0.42
+                d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=DB_RED)
+                d.text((cx, cy), str(day), font=_font(FONT_BOLD, 11),
                        fill=(255, 255, 255), anchor="mm")
-            elif day != 0:
+            else:
                 d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=TXT, anchor="mm")
 
 
