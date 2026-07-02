@@ -11,6 +11,7 @@ Reverse-engineer-нат (същия pattern като /api/oauth/usage). Може
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import urllib.error
@@ -53,17 +54,28 @@ def fetch_profile() -> Profile:
         data = _get_profile(_read_token())
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
-            token = refresh_token()
+            # refresh_token() може да хвърли UsageError (напр. HTTP 403 при invalid
+            # refresh) — превеждаме към ProfileError, за да не bubble-не суров
+            # UsageError към caller-а, който очаква fail-soft върху ProfileError.
+            try:
+                token = refresh_token()
+            except UsageError as exc_r:
+                raise ProfileError(str(exc_r)) from exc_r
             try:
                 data = _get_profile(token)
             except urllib.error.HTTPError as exc2:
                 raise ProfileError(f"HTTP {exc2.code} от /api/oauth/profile (след refresh)") from exc2
             except urllib.error.URLError as exc2:
                 raise ProfileError(f"мрежова грешка (след refresh): {exc2.reason}") from exc2
+            except (http.client.HTTPException, OSError) as exc2:
+                raise ProfileError(f"мрежова грешка (след refresh): {type(exc2).__name__}: {exc2}") from exc2
         else:
             raise ProfileError(f"HTTP {exc.code} от /api/oauth/profile") from exc
     except urllib.error.URLError as exc:
         raise ProfileError(f"мрежова грешка: {exc.reason}") from exc
+    except (http.client.HTTPException, OSError) as exc:
+        # RemoteDisconnected и подобни: unwrapped от urllib -> хванато за fail-soft.
+        raise ProfileError(f"мрежова грешка: {type(exc).__name__}: {exc}") from exc
     except UsageError as exc:
         raise ProfileError(str(exc)) from exc
 

@@ -16,6 +16,7 @@ Response shape (релевантното):
 """
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import time
@@ -97,6 +98,10 @@ def refresh_token() -> str:
         raise UsageError(f"token refresh неуспешен: HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         raise UsageError(f"token refresh мрежова грешка: {exc.reason}") from exc
+    except (http.client.HTTPException, OSError) as exc:
+        # RemoteDisconnected и подобни: urllib НЕ ги увива в URLError при getresponse()
+        # -> ако не ги хванем, unhandled exception събаря run.py loop-а.
+        raise UsageError(f"token refresh мрежова грешка: {type(exc).__name__}: {exc}") from exc
 
     oauth["accessToken"] = tok["access_token"]
     oauth["refreshToken"] = tok.get("refresh_token", rt)
@@ -151,10 +156,16 @@ def fetch_usage() -> Usage:
                 raise UsageError(f"HTTP {exc2.code} от /api/oauth/usage (след refresh)") from exc2
             except urllib.error.URLError as exc2:
                 raise UsageError(f"мрежова грешка (след refresh): {exc2.reason}") from exc2
+            except (http.client.HTTPException, OSError) as exc2:
+                raise UsageError(f"мрежова грешка (след refresh): {type(exc2).__name__}: {exc2}") from exc2
         else:
             raise UsageError(f"HTTP {exc.code} от /api/oauth/usage") from exc
     except urllib.error.URLError as exc:
         raise UsageError(f"мрежова грешка: {exc.reason}") from exc
+    except (http.client.HTTPException, OSError) as exc:
+        # RemoteDisconnected и подобни: unwrapped от urllib -> ако не ги хванем,
+        # unhandled exception събаря run.py loop-а (реален crash днес след ~5 min).
+        raise UsageError(f"мрежова грешка: {type(exc).__name__}: {exc}") from exc
 
     return Usage(
         five_hour=_parse_window(data.get("five_hour")),
