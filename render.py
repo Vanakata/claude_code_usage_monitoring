@@ -220,8 +220,14 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
             cy = gy + (r + 0.5) * rh
             if r == reset_row and week_sunday is not None:
                 # цялата reset седмица — реални дати, вкл. дни от другия месец
-                dnum = (week_sunday + timedelta(days=c)).day
-                d.text((cx, cy), str(dnum), font=_font(FONT_BOLD, 11),
+                cell_date = week_sunday + timedelta(days=c)
+                if cell_date == reset_d:
+                    # плътен pill на reset деня: gradient-ът покрива цялата Sun-Sat седмица,
+                    # без този marker не се вижда КОЙ ден в реда е reset-ът (Fri vs Sat
+                    # изглеждат еднакво, защото червеният край на gradient-а винаги е събота)
+                    pr = min(rh, cw) * 0.42
+                    d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=DB_RED)
+                d.text((cx, cy), str(cell_date.day), font=_font(FONT_BOLD, 11),
                        fill=(255, 255, 255), anchor="mm")
             elif day != 0:
                 d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=TXT, anchor="mm")
