@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import time
+from datetime import datetime
 
 try:
     # line-buffered + utf-8 -> логовете излизат веднага (важно за autostart лога)
@@ -30,6 +31,22 @@ import usage_client as uc  # noqa: E402
 
 INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "60"))
 SETTLE_SECONDS = int(os.environ.get("CLAUDE_USAGE_SETTLE", "4"))  # MCU boot след replug
+# Screensaver (Turing only): screen off през нощните часове ИЛИ когато няма активен
+# ccusage 5h блок (не си кодил наскоро). Часовете са в local time.
+SLEEP_START = int(os.environ.get("CLAUDE_USAGE_SLEEP_START", "22"))
+SLEEP_END = int(os.environ.get("CLAUDE_USAGE_SLEEP_END", "7"))
+
+
+def _should_sleep(snap, now: datetime) -> bool:
+    """True когато Turing трябва да е ScreenOff (нощ ИЛИ без активна сесия).
+
+    При snap=None (ccusage грешка) не гадаем: оставяме дисплея буден, за да не
+    угасне при преходни ccusage failures.
+    """
+    h = now.hour
+    is_night = (h >= SLEEP_START or h < SLEEP_END) if SLEEP_START > SLEEP_END \
+        else (SLEEP_START <= h < SLEEP_END)
+    return is_night or (snap is not None and not snap.has_active_block)
 
 
 def kill_turmo() -> None:
@@ -108,6 +125,19 @@ class TuringDriver:
                         return
                     time.sleep(SETTLE_SECONDS)  # MCU boot след replug
                     self.lcd = self.d.connect(port)
+                # screensaver: пропускаме render когато screen е off (спестява serial трафик
+                # и запазва MCU-то от излишни bitmap-и до чер екран)
+                if _should_sleep(snap, datetime.now()):
+                    if not getattr(self.lcd, "_screen_off", False):
+                        self.lcd.ScreenOff()
+                        self.lcd._screen_off = True
+                        print("[run] turing: screensaver ON")
+                    return
+                if getattr(self.lcd, "_screen_off", False):
+                    self.lcd.ScreenOn()
+                    self.lcd._screen_off = False
+                    self.lcd._dash_base = False  # force full redraw при събуждане
+                    print("[run] turing: screensaver OFF")
                 self.d.render(self.lcd, usage, snap)
                 if getattr(self.lcd, "_needs_reinit", False):
                     self._drop()
