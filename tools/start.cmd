@@ -12,5 +12,7 @@ if /i "%COMPUTERNAME%"=="VANAKATADESKTOP" (
 ) else (
     set CLAUDE_USAGE_TARGET=turing
 )
-REM set CLAUDE_USAGE_SMALLTV_IP=192.168.100.15
+set CLAUDE_USAGE_SMALLTV_IP=192.168.100.3
+REM Log rotation: над ~5MB -> завърти в run.log.1 (иначе расте вечно)
+for %%A in ("work\run.log") do if %%~zA gtr 5242880 move /y "work\run.log" "work\run.log.1" >nul
 ".venv\Scripts\python.exe" run.py >> "work\run.log" 2>&1
