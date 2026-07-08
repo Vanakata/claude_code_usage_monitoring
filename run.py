@@ -27,6 +27,7 @@ import serial  # noqa: E402
 from serial.tools.list_ports import comports  # noqa: E402
 
 import ccusage_client as cc  # noqa: E402
+import session_client as sc  # noqa: E402
 import usage_client as uc  # noqa: E402
 
 INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "60"))
@@ -104,6 +105,15 @@ def _snapshot():
         return None
 
 
+def _session():
+    """Context tokens на най-скорошно активната Claude Code сесия (best-effort, fail-soft)."""
+    try:
+        return sc.fetch()
+    except Exception as exc:  # jsonl parsing / IO — never take down the loop
+        print(f"[run] session недостъпен: {exc}", file=sys.stderr)
+        return None
+
+
 class TuringDriver:
     """Serial Turing дисплей: preflight + connect + reconnect + TURMO kill."""
 
@@ -113,7 +123,7 @@ class TuringDriver:
         self.lcd = None
         kill_turmo()  # разчисти порта при старт
 
-    def tick(self, usage, snap) -> None:
+    def tick(self, usage, snap, session) -> None:
         for _ in range(4):  # позволи няколко чисти reconnect-а в рамките на тика
             try:
                 if self.lcd is None:
@@ -138,14 +148,15 @@ class TuringDriver:
                     self.lcd._screen_off = False
                     self.lcd._dash_base = False  # force full redraw при събуждане
                     print("[run] turing: screensaver OFF")
-                self.d.render(self.lcd, usage, snap)
+                self.d.render(self.lcd, usage, snap, session)
                 if getattr(self.lcd, "_needs_reinit", False):
                     self._drop()
                     print("[run] turing: serial reopen — чист reconnect", file=sys.stderr)
                     continue  # чист reconnect веднага, в същия тик
                 if usage:
+                    ctx_s = f" ctx {session.tokens // 1000}K" if session else ""
                     print(f"[run] turing: 5h {usage.five_hour.utilization:.0f}% "
-                          f"wk {usage.seven_day.utilization:.0f}%")
+                          f"wk {usage.seven_day.utilization:.0f}%{ctx_s}")
                 else:
                     print("[run] turing: кадър без usage данни (--)")
                 return
@@ -174,11 +185,11 @@ class SmallTvDriver:
         self.backend = backend
         self.handle = None
 
-    def tick(self, usage, snap) -> None:
+    def tick(self, usage, snap, session) -> None:
         try:
             if self.handle is None:
                 self.handle = self.backend.connect()  # cleanup + theme=3 + autoplay off
-            self.backend.render(self.handle, usage, snap)
+            self.backend.render(self.handle, usage, snap, session)
             if usage:
                 print(f"[run] smalltv: 5h {usage.five_hour.utilization:.0f}% "
                       f"wk {usage.seven_day.utilization:.0f}%")
@@ -201,8 +212,9 @@ def _loop(drivers) -> int:
             except uc.UsageError as exc:
                 print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
             snap = _snapshot()
+            session = _session()
             for drv in drivers:  # всеки backend независимо; един падне -> другият върви
-                drv.tick(last_usage, snap)
+                drv.tick(last_usage, snap, session)
             time.sleep(INTERVAL)
     except KeyboardInterrupt:
         print("\n[run] спрян")

@@ -70,7 +70,7 @@ _DYN_REGIONS = [
     (40, 54, 124, 168),    # 5H пръстен + label + reset
     (156, 54, 240, 168),   # WK пръстен + label + reset
     (300, 4, 468, 42),     # активен модел (header дясно)
-    (304, 84, 470, 230),   # SESSION стойности (cost/tokens/today/week)
+    (302, 52, 470, 312),   # CTX панел (тoкени + bar + slug + today/week + RESTART badge)
 ]
 
 
@@ -129,15 +129,16 @@ def connect(port: str = COM_PORT) -> LcdCommRevA:
     return lcd
 
 
-def render(lcd: LcdCommRevA, usage, snap) -> None:
+def render(lcd: LcdCommRevA, usage, snap, session=None) -> None:
     """Dashboard рендер (480x320), инкрементален -> без насичане.
 
     Пълен кадър (вкл. календар) се рисува при connect и при смяна на ден; иначе
-    се обновяват само динамичните региони (пръстени/модел/SESSION стойности).
+    се обновяват само динамичните региони (пръстени/модел/CTX стойности).
     Profile (email/org) се чете на всеки tick (mtime-кеш → реагира на claude login).
+    `session` = SessionCtx от session_client (context tokens на активната сесия), None → '--'.
     """
     profile = pc.get_profile()
-    frame = render_mod.render_dashboard(usage, snap, 480, 320, profile=profile)
+    frame = render_mod.render_dashboard(usage, snap, 480, 320, profile=profile, session=session)
     today = date.today()
     wk = usage.seven_day if usage else None
     # ключ за календарната лента — сменя ли се reset датата (вкл. None->дата при идване

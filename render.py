@@ -18,6 +18,7 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 import ccusage_client as cc
+import session_client as sc
 import usage_client as uc
 
 # --- Цветове (общи) ---
@@ -207,8 +208,24 @@ def draw_calendar(d: ImageDraw.ImageDraw, x0: int, y0: int, w: int, h: int, now:
                 d.text((cx, cy), str(day), font=_font(FONT_REG, 11), fill=TXT, anchor="mm")
 
 
-def render_dashboard(usage, snap, w: int, h: int, profile=None) -> Image.Image:
-    """Dashboard кадър (радиални %-пръстени). Тема по часа (light денем / dark вечер)."""
+def _ctx_status_color(status) -> tuple:
+    """'safe'→TEAL, 'warn'→AMBER, 'critical'→RED. None (без данни) → MUTED."""
+    if status == "critical":
+        return DB_RED
+    if status == "warn":
+        return DB_AMBER
+    if status == "safe":
+        return TEAL
+    return MUTED
+
+
+def render_dashboard(usage, snap, w: int, h: int, profile=None, session=None) -> Image.Image:
+    """Dashboard кадър (радиални %-пръстени). Тема по часа (light денем / dark вечер).
+
+    `session` (session_client.SessionCtx | None) заменя дясната карта с CTX панел
+    (Turing big layout). При None → показва '--' + празен bar. SmallTV branch-ът го
+    игнорира (по design показва само пръстени).
+    """
     _apply_theme(theme_for_now())
     img = Image.new("RGB", (w, h), DB_BG)
     d = ImageDraw.Draw(img)
@@ -219,8 +236,6 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None) -> Image.Image:
     fhp = fh.utilization if fh else None
     wkp = wk.utilization if wk else None
     models = snap.block.models if snap and snap.block else []
-    cost = snap.block.cost_usd if snap and snap.block else 0.0
-    tokens = snap.block.total_tokens if snap and snap.block else 0
     today = snap.daily.today_cost if snap else 0.0
 
     breaches = alarm_breaches(usage)   # аларма при >= ALARM_PCT
@@ -262,18 +277,56 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None) -> Image.Image:
         draw_calendar(d, 22, 188, 258, 118, datetime.now(),
                       reset_date=wk.resets_at if wk else None)
 
-        # SESSION карта (вдясно, цяла височина)
+        # CTX карта (вдясно, цяла височина) — context tokens на активната Claude Code сесия
         cx0 = 302
-        d.rounded_rectangle([cx0, 52, w - 10, h - 8], radius=12, fill=CARD)
-        d.text((cx0 + 16, 70), "SESSION", font=fb(14), fill=MUTED, anchor="lm")
-        d.text((cx0 + 16, 102), f"${cost:.2f}", font=fb(28), fill=TXT, anchor="lm")
-        d.text((cx0 + 16, 136), f"{cc.format_tokens(tokens)} tok", font=fr(14), fill=MUTED, anchor="lm")
-        d.line([cx0 + 16, 160, w - 24, 160], fill=RING_TRACK, width=1)
-        d.text((cx0 + 16, 184), "today", font=fr(13), fill=MUTED, anchor="lm")
-        d.text((w - 24, 184), f"${today:.2f}", font=fb(14), fill=TXT, anchor="rm")
+        cx1 = w - 10
+        d.rounded_rectangle([cx0, 52, cx1, h - 8], radius=12, fill=CARD)
+        d.text((cx0 + 16, 70), "CTX", font=fb(14), fill=MUTED, anchor="lm")
+
+        if session is not None:
+            ctx_tokens = session.tokens
+            status = sc.status_for(ctx_tokens)
+            slug = sc.display_slug(session.project_slug)
+        else:
+            ctx_tokens = None
+            status = None
+            slug = "no active session"
+        ctx_color = _ctx_status_color(status)
+
+        num_s = f"{ctx_tokens / 1000:.1f}K" if ctx_tokens is not None else "--"
+        lim_s = f"/ {sc.CTX_LIMIT // 1000}K"
+        d.text((cx0 + 16, 108), num_s, font=fb(28), fill=ctx_color, anchor="lm")
+        d.text((cx1 - 14, 116), lim_s, font=fr(13), fill=MUTED, anchor="rm")
+
+        # progress bar 0 → CTX_LIMIT (клипваме >100% визуално, но цветът е червен)
+        bx0, bx1_ = cx0 + 16, cx1 - 14
+        by, bh = 142, 12
+        d.rounded_rectangle([bx0, by, bx1_, by + bh], radius=6, fill=RING_TRACK)
+        if ctx_tokens is not None:
+            frac = min(1.0, ctx_tokens / max(sc.CTX_LIMIT, 1))
+            fill_x = bx0 + int(round((bx1_ - bx0) * frac))
+            if fill_x > bx0 + 2:
+                d.rounded_rectangle([bx0, by, fill_x, by + bh], radius=6, fill=ctx_color)
+
+        # source slug (кой проект / кое репо) — clip до 20 chars
+        d.text(((cx0 + cx1) / 2, 174), slug[:20], font=fr(12), fill=MUTED, anchor="ma")
+
+        # divider
+        d.line([cx0 + 16, 196, cx1 - 14, 196], fill=RING_TRACK, width=1)
+
+        # today / week $ (запазени от старата SESSION карта — полезен daily контекст)
+        d.text((cx0 + 16, 218), "today", font=fr(13), fill=MUTED, anchor="lm")
+        d.text((cx1 - 14, 218), f"${today:.2f}", font=fb(14), fill=TXT, anchor="rm")
         week_s = f"${snap.daily.week_cost:.0f}" if snap else "--"
-        d.text((cx0 + 16, 212), "week", font=fr(13), fill=MUTED, anchor="lm")
-        d.text((w - 24, 212), week_s, font=fb(14), fill=TXT, anchor="rm")
+        d.text((cx0 + 16, 244), "week", font=fr(13), fill=MUTED, anchor="lm")
+        d.text((cx1 - 14, 244), week_s, font=fb(14), fill=TXT, anchor="rm")
+
+        # RESTART badge — само при critical (сигнал за kill-and-restart)
+        if status == "critical":
+            by0, by1 = h - 42, h - 20
+            d.rounded_rectangle([cx0 + 16, by0, cx1 - 14, by1], radius=6, fill=DB_RED)
+            d.text(((cx0 + cx1) / 2, (by0 + by1) / 2), "RESTART SESSION",
+                   font=fb(12), fill=(255, 255, 255), anchor="mm")
     else:  # 240x240 (SmallTV)
         hh = 30
         d.rectangle([0, 0, w, hh], fill=hdr_fill)
