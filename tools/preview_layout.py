@@ -17,6 +17,7 @@ sys.path.insert(0, ROOT)
 import display as d  # noqa: E402
 import usage_client as uc  # noqa: E402
 import ccusage_client as cc  # noqa: E402
+import session_client as sc  # noqa: E402
 
 
 class FakeLcd:
@@ -57,8 +58,16 @@ snap = cc.Snapshot(has_active_block=True, block=block,
                                           week_cost=80.6, week_tokens=94_000_000),
                    generated_at=now)
 
+session = sc.SessionCtx(
+    tokens=52_500,
+    project_slug="D--Projects-personal-projects-claude-code-usage-monitoring",
+    session_id="preview-fake-uuid",
+    updated_at=now,
+    model="claude-opus-4-7",
+)
+
 fake = FakeLcd()
-d.render(fake, usage, snap)  # render() рисува пълния dashboard кадър при първо извикване
+d.render(fake, usage, snap, session)  # render() рисува пълния dashboard кадър при първо извикване
 out = os.path.join(ROOT, "work", "bg-previews", "layout_preview.png")
 fake.canvas.save(out)
 print("wrote", out)

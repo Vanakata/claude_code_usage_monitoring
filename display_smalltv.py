@@ -107,13 +107,16 @@ def connect(_port: str = "") -> str:
     return BASE
 
 
-def render(_handle, usage, snap) -> None:
+def render(_handle, usage, snap, session=None) -> None:
     """Рендира 240x240 кадър и го push-ва: upload -> show.
 
     Profile (email/org) се чете на всеки tick през pc.get_profile() — реагира
     на `claude login` без рестарт. Mtime-кешът прави това евтино (без HTTP при
     непроменени credentials).
+    `session` се приема за signature parity с TuringDriver, но SmallTV по design
+    показва само пръстени (без CTX панел) — параметърът се игнорира тук.
     """
+    del session  # unused by design
     frame = render_mod.render_smalltv(usage, snap, _bg_img(), profile=pc.get_profile())
     buf = io.BytesIO()
     frame.save(buf, format="JPEG", quality=JPEG_QUALITY)
