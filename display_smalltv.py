@@ -27,6 +27,7 @@ from PIL import Image
 import ccusage_client as cc
 import profile_client as pc
 import render as render_mod
+import session_client as sc
 import usage_client as uc
 
 IP = os.environ.get("CLAUDE_USAGE_SMALLTV_IP", "192.168.100.15")
@@ -37,6 +38,8 @@ IMG_PATH = IMG_DIR + IMG_NAME
 JPEG_QUALITY = 90
 # Яркост (-10..100, reverse-engineer-нат от web UI: `name="brt"`). 10 е default-а на Ванака.
 BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_SMALLTV_BRIGHTNESS", "10"))
+# Изглед: 'lenti' (segmented ленти + footer; default) или 'rings' (дублирани 5H/WK).
+MODE = os.environ.get("CLAUDE_USAGE_SMALLTV_MODE", "lenti").lower()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BG_240 = os.path.join(HERE, "assets", "background_240.png")
@@ -113,11 +116,15 @@ def render(_handle, usage, snap, session=None) -> None:
     Profile (email/org) се чете на всеки tick през pc.get_profile() — реагира
     на `claude login` без рестарт. Mtime-кешът прави това евтино (без HTTP при
     непроменени credentials).
-    `session` се приема за signature parity с TuringDriver, но SmallTV по design
-    показва само пръстени (без CTX панел) — параметърът се игнорира тук.
+    Изгледът е по `CLAUDE_USAGE_SMALLTV_MODE`: 'lenti' (default) е terminal изгледът
+    от Claude Design handoff-а — 3 segmented ленти (5H/WK/CTX) + footer TODAY/BURN/
+    RESET, critical strip + alarm рамка. 'rings' връща стария дублиран 5H/WK изглед.
     """
-    del session  # unused by design
-    frame = render_mod.render_smalltv(usage, snap, _bg_img(), profile=pc.get_profile())
+    profile = pc.get_profile()
+    if MODE == "rings":
+        frame = render_mod.render_smalltv(usage, snap, _bg_img(), profile=profile)
+    else:
+        frame = render_mod.render_smalltv_lenti(usage, snap, session=session, profile=profile)
     buf = io.BytesIO()
     frame.save(buf, format="JPEG", quality=JPEG_QUALITY)
     _upload_jpeg(buf.getvalue())
@@ -135,8 +142,13 @@ def render_once() -> int:
         snap = cc.fetch_snapshot()
     except cc.CcusageError as exc:
         print(f"[smalltv] ccusage недостъпен ({exc})", file=sys.stderr)
+    try:
+        session = sc.fetch()
+    except Exception as exc:  # fail-soft — ambient показва 'no session'
+        print(f"[smalltv] session недостъпен ({exc})", file=sys.stderr)
+        session = None
     h = connect()
-    render(h, usage, snap)
+    render(h, usage, snap, session)
     print("[smalltv] Кадър изпратен — провери дисплея.")
     return 0
 

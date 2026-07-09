@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>body{margin:0;background:#FF00FF;display:grid;grid-template-columns:240px 240px;width:480px;font-family:'Roboto Mono',monospace}.f{width:240px;height:240px;background:#0B0E14;display:flex;flex-direction:column;padding:10px;box-sizing:border-box;position:relative;overflow:hidden}.scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,.12) 0 1px,transparent 1px 3px)}.hdr{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #232A38;padding-bottom:5px}.hp{color:#E2E7F0;font-size:11px;font-weight:700}.hm{color:#F5AF37;font-size:9px;font-weight:700}.rows{flex:1;display:flex;flex-direction:column;justify-content:space-evenly}.row{display:flex;align-items:center;gap:8px}.lb{color:#8E98AC;font-size:9px;width:24px;flex:none}.tr{flex:1;height:12px;border:1px solid #232A38;border-radius:2px;padding:1px;background:#0E1219}.tr.r{border-color:#3A2430;background:#150E14}.sg{height:100%;border-radius:1px}.t{background:repeating-linear-gradient(90deg,#26B2AA 0 4px,transparent 4px 6px)}.a{background:repeating-linear-gradient(90deg,#F5AF37 0 4px,transparent 4px 6px)}.r2{background:repeating-linear-gradient(90deg,#E45252 0 4px,transparent 4px 6px)}.vl{font-size:16px;font-weight:700;width:44px;text-align:right;flex:none;color:#E2E7F0}.ft{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #232A38;padding-top:6px;text-align:center}.fc{display:flex;flex-direction:column;gap:1px}.fc.m{border-left:1px solid #232A38;border-right:1px solid #232A38}.fl{color:#5C6678;font-size:8px}.fv{color:#E2E7F0;font-size:13px;font-weight:700}</style>
+</head><body>
+
+<!-- SAFE -->
+<div class="f">
+  <div class="hdr"><span class="hp">&gt;_ usage-monitoring</span><span class="hm">OPUS 4.8</span></div>
+  <div class="rows">
+    <div class="row"><span class="lb">5H</span><div class="tr"><div class="sg t" style="width:39%"></div></div><span class="vl">39%</span></div>
+    <div class="row"><span class="lb">WK</span><div class="tr"><div class="sg t" style="width:9%"></div></div><span class="vl">9%</span></div>
+    <div class="row"><span class="lb">CTX</span><div class="tr"><div class="sg t" style="width:30%"></div></div><span class="vl">30K</span></div>
+  </div>
+  <div class="ft">
+    <div class="fc"><span class="fl">TODAY</span><span class="fv" style="color:#F5AF37">$33.77</span></div>
+    <div class="fc m"><span class="fl">BURN</span><span class="fv">$12.9/h</span></div>
+    <div class="fc"><span class="fl">RESET</span><span class="fv">5h33m</span></div>
+  </div>
+  <div class="scan"></div>
+</div>
+
+<!-- WARN -->
+<div class="f">
+  <div class="hdr"><span class="hp">&gt;_ usage-monitoring</span><span class="hm">OPUS 4.8</span></div>
+  <div class="rows">
+    <div class="row"><span class="lb">5H</span><div class="tr"><div class="sg a" style="width:78%"></div></div><span class="vl" style="color:#F5AF37">78%</span></div>
+    <div class="row"><span class="lb">WK</span><div class="tr"><div class="sg t" style="width:31%"></div></div><span class="vl">31%</span></div>
+    <div class="row"><span class="lb">CTX</span><div class="tr"><div class="sg a" style="width:72%"></div></div><span class="vl" style="color:#F5AF37">72K</span></div>
+  </div>
+  <div class="ft">
+    <div class="fc"><span class="fl">TODAY</span><span class="fv" style="color:#F5AF37">$41.20</span></div>
+    <div class="fc m"><span class="fl">BURN</span><span class="fv">$14.2/h</span></div>
+    <div class="fc"><span class="fl">RESET</span><span class="fv">2h05m</span></div>
+  </div>
+  <div class="scan"></div>
+</div>
+
+<!-- CRITICAL -->
+<div class="f">
+  <div class="hdr"><span class="hp">&gt;_ usage-monitoring</span><span class="hm">OPUS 4.8</span></div>
+  <div class="rows">
+    <div class="row"><span class="lb">5H</span><div class="tr r"><div class="sg r2" style="width:91%"></div></div><span class="vl" style="color:#E45252">91%</span></div>
+    <div class="row"><span class="lb">WK</span><div class="tr"><div class="sg t" style="width:42%"></div></div><span class="vl">42%</span></div>
+    <div class="row"><span class="lb">CTX</span><div class="tr r"><div class="sg r2" style="width:100%"></div></div><span class="vl" style="color:#E45252">104K</span></div>
+  </div>
+  <div style="flex:none;background:#2A1218;border:1px solid #E45252;border-radius:3px;padding:3px 8px;display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span style="color:#E45252;font-size:10px;font-weight:700;letter-spacing:1px">RESTART SESSION</span>
+    <span style="color:#E45252;font-size:9px">ctx over 100K</span>
+  </div>
+  <div class="ft">
+    <div class="fc"><span class="fl">TODAY</span><span class="fv" style="color:#F5AF37">$58.40</span></div>
+    <div class="fc m"><span class="fl">BURN</span><span class="fv">$16.8/h</span></div>
+    <div class="fc"><span class="fl">RESET</span><span class="fv">0h48m</span></div>
+  </div>
+  <div class="scan"></div>
+</div>
+
+<!-- ALARM -->
+<div class="f" style="border:5px solid #E45252">
+  <div style="flex:none;background:#E45252;border-radius:3px;padding:3px 8px;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <span style="color:#0B0E14;font-size:11px;font-weight:700;letter-spacing:1px">■ LIMIT ALARM</span>
+    <span style="color:#0B0E14;font-size:9px;font-weight:700">5H ≥ 95%</span>
+  </div>
+  <div class="hdr" style="padding-bottom:4px"><span class="hp" style="font-size:10px">&gt;_ usage-monitoring</span><span class="hm" style="font-size:8px">OPUS 4.8</span></div>
+  <div class="rows">
+    <div class="row"><span class="lb">5H</span><div class="tr" style="border-color:#E45252;background:#2A1218"><div class="sg r2" style="width:97%"></div></div><span class="vl" style="color:#E45252">97%</span></div>
+    <div class="row"><span class="lb">WK</span><div class="tr"><div class="sg t" style="width:44%"></div></div><span class="vl">44%</span></div>
+    <div class="row"><span class="lb">CTX</span><div class="tr"><div class="sg t" style="width:55%"></div></div><span class="vl">55K</span></div>
+  </div>
+  <div class="ft" style="padding-top:5px">
+    <div class="fc"><span class="fl">TODAY</span><span class="fv" style="color:#F5AF37">$62.10</span></div>
+    <div class="fc m"><span class="fl">BURN</span><span class="fv">$17.4/h</span></div>
+    <div class="fc"><span class="fl">RESET</span><span class="fv" style="color:#E45252">0h22m</span></div>
+  </div>
+  <div class="scan"></div>
+</div>
+
+</body></html>

@@ -25,3 +25,7 @@ work/tools/
 
 # Background preview варианти (само избраният отива в assets/)
 work/bg-previews/
+
+# design preview артефакти (генерирани) + Claude Design zip
+work/design/out/
+/Claude Usage Physical Dashboard.zip
