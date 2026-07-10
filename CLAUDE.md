@@ -58,7 +58,7 @@ profile_client  ─┘                                ▲
 
 Ключови инварианти:
 
-- **`run.py` диспечер.** Построява списък от driver-и (`TuringDriver` / `SmallTvDriver`) според `CLAUDE_USAGE_TARGET`. Дърпа `fetch_usage()` + `fetch_snapshot()` **веднъж** и подава на всеки. `both` НЕ удвоява rate-limit-а към `/api/oauth/usage`. Всеки driver е изолиран — единият падне (мрежа/serial), другият продължава.
+- **`run.py` диспечер.** Построява списък от driver-и (`TuringDriver` / `SmallTvDriver`) според `CLAUDE_USAGE_TARGET`. Дърпа `fetch_usage()` + `fetch_snapshot()` **веднъж** и подава на всеки. `both` НЕ удвоява rate-limit-а към `/api/oauth/usage`. Всеки driver е изолиран — единият падне (мрежа/serial), другият продължава. `/usage` endpoint-ът 429-ва често (дели bucket с Claude Code UI-то): последният добър fetch се persist-ва в `work/usage_cache.json` (зарежда се при старт → без `--` след рестарт; прозорци с отминал `resets_at` се нулират, кеш >12h се хвърля), а на 429 fetch-ът backoff-ва 1→2→4→5 тика (cap ~5 мин) докато рендерът върви с кеша.
 - **`render.py` е чист рендер** — без I/O. Един `render_dashboard(usage, snap, w, h)` обслужва и 480×320 (Turing), и 240×240 (SmallTV); branchва се вътре по `big = w >= 400`. Промени в layout/цветове/threshold-и → тук. SmallTV получава САМО пръстени (без cost/tokens) по дизайн.
 - **`display.py` patch-ва драйвер либ-а на runtime:**
   1. `LcdCommRevA.openSerial` — оригиналът прави `os._exit(0)` при липсващ/зает порт (нехванаем kill с код 0 → Task Scheduler не рестартира). Patch-нат → `raise SerialException` → `run.py` reconnect.

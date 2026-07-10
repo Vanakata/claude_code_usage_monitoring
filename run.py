@@ -15,7 +15,7 @@ import os
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     # line-buffered + utf-8 -> логовете излизат веднага (важно за autostart лога)
@@ -204,13 +204,30 @@ class SmallTvDriver:
 
 
 def _loop(drivers) -> int:
-    last_usage = None  # кеш — на usage грешка (429/мрежа) рисуваме последното добро
+    # кеш — на usage грешка (429/мрежа) рисуваме последното добро; при старт се
+    # зарежда от диска, за да не виси '--' докато 429-ките отшумят след рестарт
+    last_usage = uc.load_cache()
+    if last_usage:
+        age = datetime.now(timezone.utc) - last_usage.generated_at
+        print(f"[run] usage от disk кеша ({uc._fmt_delta(age)} стар)")
+    skip = penalty = 0  # 429 backoff в тикове: 1, 2, 4 → cap 5 (~5 мин при 60s)
     try:
         while True:
-            try:
-                last_usage = uc.fetch_usage()
-            except uc.UsageError as exc:
-                print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
+            if skip:
+                skip -= 1
+            else:
+                try:
+                    last_usage = uc.fetch_usage()
+                    uc.save_cache(last_usage)
+                    penalty = 0
+                except uc.UsageError as exc:
+                    if "429" in str(exc):  # rate limit → отстъпи, кешът покрива
+                        penalty = min(penalty * 2 or 1, 5)
+                        skip = penalty
+                        print(f"[run] usage 429 — backoff {penalty * INTERVAL}s "
+                              f"(рисувам кеш/--)", file=sys.stderr)
+                    else:
+                        print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
             snap = _snapshot()
             session = _session()
             for drv in drivers:  # всеки backend независимо; един падне -> другият върви

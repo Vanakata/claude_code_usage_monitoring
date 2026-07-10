@@ -28,6 +28,11 @@ from typing import Optional
 
 CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 USAGE_URL = "https://api.anthropic.com/api/oauth/usage"
+# Persist на последния добър fetch — endpoint-ът 429-ва често (bucket-ът се дели
+# с Claude Code UI-то) и без диск кеш всеки рестарт на loop-а виси на '--'.
+CACHE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "work", "usage_cache.json")
+CACHE_MAX_AGE = 12 * 3600  # sec; по-стар кеш подвежда повече, отколкото '--'
 OAUTH_BETA = "oauth-2025-04-20"
 # OAuth refresh (стойности от Claude Code extension.js)
 TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
@@ -172,6 +177,50 @@ def fetch_usage() -> Usage:
         seven_day=_parse_window(data.get("seven_day")),
         generated_at=datetime.now(timezone.utc),
     )
+
+
+def save_cache(u: Usage) -> None:
+    """Персистира fetch-а на диска (атомарно). Fail-soft — кешът е bonus."""
+    def _win(w: UsageWindow) -> dict:
+        return {"utilization": w.utilization,
+                "resets_at": w.resets_at.isoformat() if w.resets_at else None}
+    data = {"five_hour": _win(u.five_hour), "seven_day": _win(u.seven_day),
+            "generated_at": u.generated_at.isoformat()}
+    try:
+        os.makedirs(os.path.dirname(CACHE_PATH), exist_ok=True)
+        tmp = CACHE_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, CACHE_PATH)
+    except OSError:
+        pass
+
+
+def load_cache() -> Optional[Usage]:
+    """Последният persist-нат fetch; None при липсващ/счупен/стар кеш.
+
+    Прозорец с отминал resets_at се нулира — лимитът реално се е reset-нал,
+    старият % би лъгал (особено 5h при кеш отпреди часове).
+    """
+    try:
+        with open(CACHE_PATH, encoding="utf-8") as f:
+            data = json.load(f)
+        gen = datetime.fromisoformat(data["generated_at"])
+    except (OSError, ValueError, KeyError, json.JSONDecodeError):
+        return None
+    now = datetime.now(timezone.utc)
+    if (now - gen).total_seconds() > CACHE_MAX_AGE:
+        return None
+
+    def _win(obj) -> UsageWindow:
+        w = _parse_window(obj)
+        if w.resets_at and w.resets_at < now:
+            return UsageWindow(utilization=0.0, resets_at=None)
+        return w
+
+    return Usage(five_hour=_win(data.get("five_hour")),
+                 seven_day=_win(data.get("seven_day")),
+                 generated_at=gen)
 
 
 def _fmt_delta(td) -> str:

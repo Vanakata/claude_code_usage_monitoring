@@ -23,6 +23,9 @@ work/tools/
 # Logs (turing-smart-screen logger writes log.log)
 *.log
 
+# Runtime persist на последния добър /usage fetch (run.py)
+work/usage_cache.json
+
 # Background preview варианти (само избраният отива в assets/)
 work/bg-previews/
 
