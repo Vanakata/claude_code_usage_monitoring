@@ -36,7 +36,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 | `CLAUDE_USAGE_INTERVAL` | `60` | сек. между refresh-ите |
 | `CLAUDE_USAGE_COM_PORT` | `AUTO` | override; AUTO търси VID/PID `1A86:5722` |
 | `CLAUDE_USAGE_BRIGHTNESS` | `15` | 0–255 (Turing) |
-| `CLAUDE_USAGE_SMALLTV_IP` | `192.168.100.15` | IP в текущата мрежа |
+| `CLAUDE_USAGE_SMALLTV_IP` | `192.168.100.3` | IP в текущата мрежа |
 | `CLAUDE_USAGE_SMALLTV_BRIGHTNESS` | `10` | −10..100 (SmallTV `/set?brt=`) |
 | `CLAUDE_USAGE_THEME` | `auto` | `light` / `dark` / `auto` (по час) |
 | `CLAUDE_USAGE_DAY_START` / `_DAY_END` | `7` / `19` | граници за auto theme |

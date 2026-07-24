@@ -129,7 +129,7 @@ Task-ът трябва да е **elevated** (Highest), иначе не може 
 GeekMagic SmallTV Ultra (240×240) е самостоятелно WiFi устройство — рендираме кадър на PC-то и го push-ваме по HTTP. Споделя `render.py` / `ccusage_client.py` / `usage_client.py` с Turing backend-а.
 
 ```bash
-CLAUDE_USAGE_TARGET=smalltv CLAUDE_USAGE_SMALLTV_IP=192.168.100.15 ./.venv/Scripts/python.exe run.py
+CLAUDE_USAGE_TARGET=smalltv CLAUDE_USAGE_SMALLTV_IP=192.168.100.3 ./.venv/Scripts/python.exe run.py
 ```
 
 `CLAUDE_USAGE_TARGET`: `turing` (default) кара serial дисплея; `smalltv` — SmallTV по HTTP; **`both`** — двата едновременно от ЕДИН процес (едно `/usage` викане, не удвоява rate-limit-а; всеки backend с независим error handling). И PC-то, и дисплеят трябва да са на една мрежа.

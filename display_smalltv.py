@@ -30,7 +30,7 @@ import render as render_mod
 import session_client as sc
 import usage_client as uc
 
-IP = os.environ.get("CLAUDE_USAGE_SMALLTV_IP", "192.168.100.15")
+IP = os.environ.get("CLAUDE_USAGE_SMALLTV_IP", "192.168.100.3")
 BASE = f"http://{IP}"
 IMG_DIR = "/image/"
 IMG_NAME = "dashboard.jpg"
