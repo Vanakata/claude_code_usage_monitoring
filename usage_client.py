@@ -64,7 +64,8 @@ class Usage:
 
 def _read_creds() -> dict:
     try:
-        return json.load(open(CREDENTIALS_PATH, encoding="utf-8"))
+        with open(CREDENTIALS_PATH, encoding="utf-8") as f:
+            return json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         raise UsageError(f"не мога да чета {CREDENTIALS_PATH}: {exc}") from exc
 

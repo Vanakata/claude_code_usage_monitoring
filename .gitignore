@@ -26,6 +26,9 @@ work/tools/
 # Runtime persist на последния добър /usage fetch (run.py)
 work/usage_cache.json
 
+# Auto-discovered SmallTV IP (machine-specific, display_smalltv.py)
+work/smalltv_ip.txt
+
 # Background preview варианти (само избраният отива в assets/)
 work/bg-previews/
 

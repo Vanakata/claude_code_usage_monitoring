@@ -134,7 +134,7 @@ CLAUDE_USAGE_TARGET=smalltv CLAUDE_USAGE_SMALLTV_IP=192.168.100.3 ./.venv/Script
 
 `CLAUDE_USAGE_TARGET`: `turing` (default) кара serial дисплея; `smalltv` — SmallTV по HTTP; **`both`** — двата едновременно от ЕДИН процес (едно `/usage` викане, не удвоява rate-limit-а; всеки backend с независим error handling). И PC-то, и дисплеят трябва да са на една мрежа.
 
-Autostart task-ът (`tools/start.cmd`) е настроен на **`both`** — кара двата дисплея. Edit-ни `start.cmd` ако искаш само единия.
+Autostart task-ът (`tools/start.cmd`) default-ва на **`smalltv`**, но уважава `CLAUDE_USAGE_TARGET` ако е зададен в средата — сложи `turing` или `both` там (или edit-ни `start.cmd`), ако искаш друг дисплей.
 
 ### API (reverse-engineer-нат от web UI-то)
 

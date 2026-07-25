@@ -58,7 +58,7 @@ def session(tokens):
         session_id="preview-fake-uuid", updated_at=NOW, model="claude-opus-4-8")
 
 
-PROFILE = SimpleNamespace(email="ivan.talmazov@a1.bg", full_name="", org_name="")
+PROFILE = SimpleNamespace(email="user@example.com", full_name="", org_name="")
 
 
 def save(name, img):

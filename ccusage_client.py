@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 """ccusage data layer — вади реални Claude usage метрики през `ccusage --json`.
 
-Това е САМО data слоят (виж work/tomorrow.md): subprocess към ccusage, парс в
-dataclass-ове + CustomDataSource-съвместими wrapper-и. Никакъв дисплей тук.
+Това е САМО data слоят: subprocess към ccusage, парс в dataclass-ове.
+Никакъв дисплей тук — render.py чете Snapshot-а директно.
 
 Архитектура:
-    ccusage blocks/daily --json  ->  parse  ->  Snapshot  ->  CustomDataSource
+    ccusage blocks/daily --json  ->  parse  ->  Snapshot
 """
 from __future__ import annotations
 
@@ -17,10 +17,6 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
-
-# Колко да кешираме snapshot-а, за да не пускаме ccusage за всеки CustomDataSource
-# метод в рамките на един refresh цикъл.
-SNAPSHOT_TTL_SECONDS = 5.0
 
 # 5-часовият прозорец на Claude billing блоковете.
 BLOCK_WINDOW = timedelta(hours=5)
@@ -176,25 +172,6 @@ def fetch_snapshot() -> Snapshot:
 
 
 # --------------------------------------------------------------------------- #
-# кеширан достъп (за CustomDataSource wrapper-ите)
-# --------------------------------------------------------------------------- #
-_cache: Optional[Snapshot] = None
-
-
-def get_snapshot(force: bool = False) -> Snapshot:
-    """Връща кеширан snapshot; refresh-ва ако е по-стар от TTL."""
-    global _cache
-    if (
-        force
-        or _cache is None
-        or (datetime.now(timezone.utc) - _cache.generated_at).total_seconds()
-        > SNAPSHOT_TTL_SECONDS
-    ):
-        _cache = fetch_snapshot()
-    return _cache
-
-
-# --------------------------------------------------------------------------- #
 # helpers за форматиране
 # --------------------------------------------------------------------------- #
 def format_tokens(n: int) -> str:
@@ -204,75 +181,6 @@ def format_tokens(n: int) -> str:
     if n >= 1_000:
         return f"{n / 1_000:.1f}K"
     return str(n)
-
-
-# --------------------------------------------------------------------------- #
-# CustomDataSource-съвместими wrapper-и
-# (контракт от turing-smart-screen-python: as_numeric / as_string / last_values)
-# --------------------------------------------------------------------------- #
-class _SnapshotSource:
-    """База: тегли от кеширания snapshot. Пази история за line graph."""
-    _history: List[float]
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls._history = [float("nan")] * 10
-
-    def _push(self, value: float) -> float:
-        type(self)._history.append(value)
-        type(self)._history.pop(0)
-        return value
-
-    def last_values(self) -> List[float]:
-        return type(self)._history
-
-
-class FiveHourElapsed(_SnapshotSource):
-    """% изтекло от активния 5h прозорец (0 ако няма активен блок)."""
-    def as_numeric(self) -> float:
-        snap = get_snapshot()
-        return self._push(snap.block.elapsed_pct if snap.block else 0.0)
-
-    def as_string(self) -> str:
-        return f"{self.as_numeric():>3.0f}%"
-
-
-class BlockCost(_SnapshotSource):
-    """Cost ($) на активния блок."""
-    def as_numeric(self) -> float:
-        snap = get_snapshot()
-        return self._push(snap.block.cost_usd if snap.block else 0.0)
-
-    def as_string(self) -> str:
-        return f"${self.as_numeric():>6.2f}"
-
-
-class BlockTokens(_SnapshotSource):
-    """Tokens в активния блок."""
-    def as_numeric(self) -> float:
-        snap = get_snapshot()
-        return self._push(float(snap.block.total_tokens) if snap.block else 0.0)
-
-    def as_string(self) -> str:
-        return format_tokens(int(self.as_numeric()))
-
-
-class TodayCost(_SnapshotSource):
-    """Днешен cost ($)."""
-    def as_numeric(self) -> float:
-        return self._push(get_snapshot().daily.today_cost)
-
-    def as_string(self) -> str:
-        return f"${self.as_numeric():>6.2f}"
-
-
-class WeekCost(_SnapshotSource):
-    """Седмичен cost ($, последни 7 дни)."""
-    def as_numeric(self) -> float:
-        return self._push(get_snapshot().daily.week_cost)
-
-    def as_string(self) -> str:
-        return f"${self.as_numeric():>7.2f}"
 
 
 # --------------------------------------------------------------------------- #
