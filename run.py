@@ -30,7 +30,10 @@ import ccusage_client as cc  # noqa: E402
 import session_client as sc  # noqa: E402
 import usage_client as uc  # noqa: E402
 
-INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "60"))
+INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "15"))
+# `/usage` е реверс-инженерен API — кешираме отговора за да не тропаме често (429 риск).
+# Loop-ът извиква fetch_usage() само ако прошло > API_INTERVAL от последния успех.
+API_INTERVAL = int(os.environ.get("CLAUDE_USAGE_API_INTERVAL", "60"))
 SETTLE_SECONDS = int(os.environ.get("CLAUDE_USAGE_SETTLE", "4"))  # MCU boot след replug
 # Screensaver (Turing only): screen off през нощните часове ИЛИ когато няма активен
 # ccusage 5h блок (не си кодил наскоро). Часовете са в local time.
@@ -178,18 +181,29 @@ class TuringDriver:
 
 
 class SmallTvDriver:
-    """SmallTV HTTP дисплей (WiFi). Без serial/TURMO/elevation."""
+    """SmallTV HTTP дисплей (WiFi). Без serial/TURMO/elevation.
+
+    Собствен sub-interval: flash е малък и има write cycles → push максимум веднъж
+    на CLAUDE_USAGE_SMALLTV_INTERVAL сек. (default 60). Loop-ът може да ти тика
+    на 15s без да убиеш flash-а.
+    """
 
     def __init__(self):
         import display_smalltv as backend
         self.backend = backend
         self.handle = None
+        self.push_interval = int(os.environ.get("CLAUDE_USAGE_SMALLTV_INTERVAL", "60"))
+        self.last_push_at = 0.0
 
     def tick(self, usage, snap, session) -> None:
+        now = time.monotonic()
+        if self.handle is not None and (now - self.last_push_at) < self.push_interval:
+            return  # cooldown — щади flash-а
         try:
             if self.handle is None:
                 self.handle = self.backend.connect()  # cleanup + theme=3 + autoplay off
             self.backend.render(self.handle, usage, snap, session)
+            self.last_push_at = now
             if usage:
                 print(f"[run] smalltv: 5h {usage.five_hour.utilization:.0f}% "
                       f"wk {usage.seven_day.utilization:.0f}%")
@@ -204,13 +218,19 @@ class SmallTvDriver:
 
 
 def _loop(drivers) -> int:
-    last_usage = None  # кеш — на usage грешка (429/мрежа) рисуваме последното добро
+    # Кеш на /usage: между API_INTERVAL fetch-овете рисуваме последния добър отговор.
+    # Локалните fetch-ове (ccusage, session) са евтини → бият всеки tick.
+    last_usage = None
+    last_usage_at = 0.0
     try:
         while True:
-            try:
-                last_usage = uc.fetch_usage()
-            except uc.UsageError as exc:
-                print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
+            now = time.monotonic()
+            if last_usage is None or (now - last_usage_at) >= API_INTERVAL:
+                try:
+                    last_usage = uc.fetch_usage()
+                    last_usage_at = now
+                except uc.UsageError as exc:
+                    print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
             snap = _snapshot()
             session = _session()
             for drv in drivers:  # всеки backend независимо; един падне -> другият върви
