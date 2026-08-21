@@ -15,8 +15,10 @@ GeekMagic SmallTV Ultra е самостоятелно WiFi устройство:
 """
 from __future__ import annotations
 
+import concurrent.futures
 import io
 import os
+import socket
 import sys
 import urllib.error
 import urllib.parse
@@ -27,9 +29,14 @@ from PIL import Image
 import ccusage_client as cc
 import profile_client as pc
 import render as render_mod
+import session_client as sc
 import usage_client as uc
 
-IP = os.environ.get("CLAUDE_USAGE_SMALLTV_IP", "192.168.100.15")
+# IP resolution: env override > текущ/кеширан (ако отговаря) > мрежов scan > default.
+# Обикновен потребител не знае какъв IP е дало DHCP-то — затова auto-discovery.
+DEFAULT_IP = "192.168.100.3"
+_IP_OVERRIDE = os.environ.get("CLAUDE_USAGE_SMALLTV_IP")  # изрично зададен → без scan
+IP = _IP_OVERRIDE or DEFAULT_IP   # provisional; resolve_ip() може да го смени
 BASE = f"http://{IP}"
 IMG_DIR = "/image/"
 IMG_NAME = "dashboard.jpg"
@@ -37,9 +44,12 @@ IMG_PATH = IMG_DIR + IMG_NAME
 JPEG_QUALITY = 90
 # Яркост (-10..100, reverse-engineer-нат от web UI: `name="brt"`). 10 е default-а на Ванака.
 BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_SMALLTV_BRIGHTNESS", "10"))
+# Изглед: 'lenti' (segmented ленти + footer; default) или 'rings' (дублирани 5H/WK).
+MODE = os.environ.get("CLAUDE_USAGE_SMALLTV_MODE", "lenti").lower()
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BG_240 = os.path.join(HERE, "assets", "background_240.png")
+IP_CACHE_PATH = os.path.join(HERE, "work", "smalltv_ip.txt")  # запомнено discovery IP
 
 # Наши файлове за чистене при старт (НЕ user pics като ezgif-*/spaceman.gif!)
 _OUR_FILES = ["claude_test.jpg"]
@@ -97,8 +107,99 @@ def cleanup() -> None:
             pass  # липсва -> ок
 
 
+# --------------------------------------------------------------------------- #
+# IP auto-discovery — намира SmallTV-то по мрежата без ръчно въвеждане на IP
+# --------------------------------------------------------------------------- #
+def _set_ip(ip: str) -> None:
+    global IP, BASE
+    IP, BASE = ip, f"http://{ip}"
+
+
+def _is_smalltv(ip: str, timeout: float = 1.5) -> bool:
+    """Недеструктивен probe: GET /set без параметри връща точно 'FAIL' на SmallTV."""
+    try:
+        with urllib.request.urlopen(f"http://{ip}/set", timeout=timeout) as r:
+            return r.read(16).strip() == b"FAIL"
+    except (urllib.error.URLError, OSError):
+        return False
+
+
+def _load_cached_ip() -> str | None:
+    try:
+        with open(IP_CACHE_PATH, encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def _save_cached_ip(ip: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(IP_CACHE_PATH), exist_ok=True)
+        with open(IP_CACHE_PATH, "w", encoding="utf-8") as f:
+            f.write(ip)
+    except OSError:
+        pass
+
+
+def _local_prefixes() -> list[str]:
+    """/24 префиксът на активния интерфейс (напр. '192.168.100')."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))          # не праща трафик, само избира интерфейс
+        ip = s.getsockname()[0]
+        s.close()
+        return [ip.rsplit(".", 1)[0]]
+    except OSError:
+        return []
+
+
+def _port80_open(ip: str, timeout: float = 0.3) -> bool:
+    try:
+        with socket.create_connection((ip, 80), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def discover_smalltv() -> str | None:
+    """Scan-ва локалния /24: бърз TCP port-80 филтър → /set=='FAIL' identify."""
+    for prefix in _local_prefixes():
+        hosts = [f"{prefix}.{i}" for i in range(1, 255)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=64) as ex:
+            open_hosts = [ip for ip, ok in zip(hosts, ex.map(_port80_open, hosts)) if ok]
+        for ip in open_hosts:
+            if _is_smalltv(ip):
+                return ip
+    return None
+
+
+def resolve_ip(rediscover: bool = False) -> str:
+    """Установява работещ IP. Env override печели винаги (без scan)."""
+    if _IP_OVERRIDE:
+        _set_ip(_IP_OVERRIDE)
+        return IP
+    if not rediscover and _is_smalltv(IP):   # текущият still живее → бърз път
+        return IP
+    cached = _load_cached_ip()
+    if cached and cached != IP and _is_smalltv(cached):
+        _set_ip(cached)
+        return IP
+    print("[smalltv] търся дисплея по мрежата…")
+    found = discover_smalltv()
+    if found:
+        _set_ip(found)
+        _save_cached_ip(found)
+        print(f"[smalltv] намерен на {found}")
+        return IP
+    print(f"[smalltv] не намирам дисплея — на една WiFi мрежа ли сте? "
+          f"пробвам default {DEFAULT_IP}", file=sys.stderr)
+    _set_ip(DEFAULT_IP)
+    return IP
+
+
 def connect(_port: str = "") -> str:
-    """Setup (веднъж): cleanup + Photo Album + изключи image auto-display."""
+    """Setup (веднъж): resolve IP + cleanup + Photo Album + изключи image auto-display."""
+    resolve_ip()
     print(f"[smalltv] {BASE} — setup (theme=3, autoplay off, brt={BRIGHTNESS})")
     cleanup()
     _get("/set?theme=3")              # Photo Album режим
@@ -113,11 +214,15 @@ def render(_handle, usage, snap, session=None) -> None:
     Profile (email/org) се чете на всеки tick през pc.get_profile() — реагира
     на `claude login` без рестарт. Mtime-кешът прави това евтино (без HTTP при
     непроменени credentials).
-    `session` се приема за signature parity с TuringDriver, но SmallTV по design
-    показва само пръстени (без CTX панел) — параметърът се игнорира тук.
+    Изгледът е по `CLAUDE_USAGE_SMALLTV_MODE`: 'lenti' (default) е terminal изгледът
+    от Claude Design handoff-а — 3 segmented ленти (5H/WK/CTX) + footer TODAY/BURN/
+    RESET, critical strip + alarm рамка. 'rings' връща стария дублиран 5H/WK изглед.
     """
-    del session  # unused by design
-    frame = render_mod.render_smalltv(usage, snap, _bg_img(), profile=pc.get_profile())
+    profile = pc.get_profile()
+    if MODE == "rings":
+        frame = render_mod.render_smalltv(usage, snap, _bg_img(), profile=profile)
+    else:
+        frame = render_mod.render_smalltv_lenti(usage, snap, session=session, profile=profile)
     buf = io.BytesIO()
     frame.save(buf, format="JPEG", quality=JPEG_QUALITY)
     _upload_jpeg(buf.getvalue())
@@ -135,8 +240,13 @@ def render_once() -> int:
         snap = cc.fetch_snapshot()
     except cc.CcusageError as exc:
         print(f"[smalltv] ccusage недостъпен ({exc})", file=sys.stderr)
+    try:
+        session = sc.fetch()
+    except Exception as exc:  # fail-soft — ambient показва 'no session'
+        print(f"[smalltv] session недостъпен ({exc})", file=sys.stderr)
+        session = None
     h = connect()
-    render(h, usage, snap)
+    render(h, usage, snap, session)
     print("[smalltv] Кадър изпратен — провери дисплея.")
     return 0
 

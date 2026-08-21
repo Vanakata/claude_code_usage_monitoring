@@ -41,11 +41,11 @@ always-render с кеш (екранът винаги рисува, дори бе
 
 Контекст: добавяме GeekMagic SmallTV Ultra като **втори дисплей** за същите Claude usage данни. За разлика от Turing (serial), SmallTV е самостоятелно WiFi устройство — рендираме кадър на PC-то и го **push-ваме по HTTP**. Транспортът е **тестван на живо и потвърден** (виж "Закован API" долу). Целта: един проект, два transport-а, споделен data/render код — НЕ нов repo.
 
-**Закован API (потвърден end-to-end на 192.168.100.15):**
+**Закован API (потвърден end-to-end на 192.168.100.3):**
 - Upload: `POST http://<ip>/doUpload?dir=/image/` — multipart, поле `file`, **JPEG** (тествано с quality 90).
 - Photo Album режим (веднъж при старт): `GET http://<ip>/set?theme=3`.
 - Покажи кадъра: `GET http://<ip>/set?img=/image/<filename>`.
-- Device: **240×240**, IP `192.168.100.15` (env-конфигурируем). И PC-то, и дисплеят трябва да са на една мрежа.
+- Device: **240×240**, IP `192.168.100.3` (env-конфигурируем). И PC-то, и дисплеят трябва да са на една мрежа.
 
 Scope:
 - **Рефактор:** извади render логиката от `display.py` в споделен модул (напр. `render.py`), параметризиран по размер (480×320 Turing / 240×240 SmallTV). Споделят се `ccusage_client.py`, `usage_client.py`, gauge-ове, цветове, `_model_label`, threshold-ите — без дублиране.

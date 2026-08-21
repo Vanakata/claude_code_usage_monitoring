@@ -94,8 +94,28 @@ def _extract_usage(line: str) -> Optional[Tuple[int, Optional[str]]]:
     return total, msg.get("model")
 
 
+def _is_compact_boundary(line: str) -> bool:
+    """True ако редът е /compact граница (summary) → контекстът е ресетнат.
+
+    Всичко ПРЕДИ такъв ред е от старата сесия. Claude Code маркира summary-то
+    с `isCompactSummary: true` (валидно и за ръчен `/compact`, и за auto-compact).
+    """
+    try:
+        obj = json.loads(line)
+    except json.JSONDecodeError:
+        return False
+    return obj.get("isCompactSummary") is True
+
+
 def fetch() -> Optional[SessionCtx]:
-    """Контекст на най-recently активния Claude Code session. None ако stale."""
+    """Контекст на най-recently активния Claude Code session. None ако stale.
+
+    Обхожда опашката назад и връща usage-а на **най-новия assistant reply**.
+    Ако удари `/compact` граница ПРЕДИ такъв reply → контекстът е току-що ресетнат,
+    а единственият по-стар assistant reply е пред-compact пикът (напр. 250K). В тоя
+    прозорец (между /compact и първия нов reply) рапортуваме 0, иначе дисплеят виси
+    на стария връх и "не се занулява" след compact.
+    """
     latest = _find_latest_jsonl()
     if latest is None:
         return None
@@ -106,17 +126,27 @@ def fetch() -> Optional[SessionCtx]:
     updated_at = datetime.fromtimestamp(mtime, timezone.utc)
     if (datetime.now(timezone.utc) - updated_at).total_seconds() > STALE_AFTER_SEC:
         return None
+    compacted = False
     for line in reversed(_tail_lines(latest)):
+        if not compacted and _is_compact_boundary(line):
+            # Прекрачихме compact граница без да сме намерили нов reply → reset.
+            # Продължаваме само за да вземем модела (за хедъра) от стария reply.
+            compacted = True
+            continue
         parsed = _extract_usage(line)
-        if parsed is not None:
-            tokens, model = parsed
-            return SessionCtx(
-                tokens=tokens,
-                project_slug=latest.parent.name,
-                session_id=latest.stem,
-                updated_at=updated_at,
-                model=model,
-            )
+        if parsed is None:
+            continue
+        tokens, model = parsed
+        return SessionCtx(
+            tokens=0 if compacted else tokens,
+            project_slug=latest.parent.name,
+            session_id=latest.stem,
+            updated_at=updated_at,
+            model=model,
+        )
+    if compacted:
+        # compact граница, но нямаме дори стар reply в опашката за модела → пак reset
+        return SessionCtx(0, latest.parent.name, latest.stem, updated_at, None)
     return None
 
 

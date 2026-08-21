@@ -49,19 +49,50 @@ Write-Host "[setup] installing deps (pyserial, Pillow, numpy)..."
 & $venvPy -m pip install --quiet pyserial Pillow numpy
 if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 
-# --- 5. ccusage (optional - for SESSION cost/tokens) ---
+# --- 5. ccusage (for SESSION cost/tokens) - auto-install if Node is present ---
 if (Get-Command ccusage -ErrorAction SilentlyContinue) {
     Write-Host "[setup] ccusage: found" -ForegroundColor Green
+} elseif (Get-Command npm -ErrorAction SilentlyContinue) {
+    Write-Host "[setup] ccusage missing - installing via npm..." -ForegroundColor Yellow
+    try { npm install -g ccusage | Out-Null } catch {}
+    if (Get-Command ccusage -ErrorAction SilentlyContinue) {
+        Write-Host "[setup] ccusage: installed" -ForegroundColor Green
+    } else {
+        Write-Host "[setup] ccusage install failed - run manually: npm i -g ccusage" -ForegroundColor Yellow
+    }
 } else {
-    Write-Host "[setup] ccusage missing - for SESSION cost/tokens run: npm i -g ccusage" -ForegroundColor Yellow
-    Write-Host "        (the 5h/WK gauges work without it)" -ForegroundColor Yellow
+    Write-Host "[setup] ccusage missing and no Node.js found." -ForegroundColor Yellow
+    Write-Host "        SESSION/CTX/BURN need it: install Node (nodejs.org) then npm i -g ccusage." -ForegroundColor Yellow
+    Write-Host "        The 5h/WK gauges (and SmallTV) work without it." -ForegroundColor Yellow
 }
+
+# --- 6. Desktop shortcut (double-clickable start) ---
+try {
+    $startCmd = Join-Path $root "tools\start.cmd"
+    $desktop  = [Environment]::GetFolderPath('Desktop')
+    $lnk      = Join-Path $desktop "Claude Usage Display.lnk"
+    $ws = New-Object -ComObject WScript.Shell
+    $sc = $ws.CreateShortcut($lnk)
+    $sc.TargetPath       = $startCmd
+    $sc.WorkingDirectory = $root
+    $sc.Description       = "Start Claude usage display loop"
+    $sc.Save()
+    Write-Host "[setup] Desktop shortcut created: 'Claude Usage Display'" -ForegroundColor Green
+} catch {
+    Write-Host "[setup] Could not create desktop shortcut (skipping): $_" -ForegroundColor Yellow
+}
+
+# --- 7. Preflight doctor ---
+Write-Host ""
+Write-Host "[setup] Running preflight check (doctor)..." -ForegroundColor Cyan
+& $venvPy (Join-Path $root "doctor.py")
 
 # --- Done ---
 Write-Host ""
-Write-Host "[setup] DONE. Plug in the monitor and run:" -ForegroundColor Cyan
-Write-Host "  .\.venv\Scripts\python.exe run.py"
+Write-Host "[setup] DONE. To start the display, either:" -ForegroundColor Cyan
+Write-Host "  - double-click 'Claude Usage Display' on your Desktop, or"
+Write-Host "  - run:  .\.venv\Scripts\python.exe run.py"
 Write-Host ""
-Write-Host "Autostart (elevated PowerShell):" -ForegroundColor Cyan
+Write-Host "Autostart on logon (SmallTV needs no admin; Turing needs elevated for TURMO):" -ForegroundColor Cyan
 Write-Host "  powershell -ExecutionPolicy Bypass -File tools\install_autostart.ps1"
 Write-Host "  Start-ScheduledTask -TaskName ClaudeUsageDisplay"

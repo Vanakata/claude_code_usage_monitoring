@@ -359,3 +359,131 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None, session=None) ->
 def render_smalltv(usage, snap, bg=None, profile=None) -> Image.Image:
     """SmallTV 240x240 кадър (dashboard тема). `bg` се игнорира (light тема)."""
     return render_dashboard(usage, snap, 240, 240, profile=profile)
+
+
+# --- SmallTV "ЛЕНТИ" палитра (ФИКСИРАНА terminal dark — независима от темата) ---
+# Виж Claude Usage Physical Dashboard/handoff/smalltv-lenti-spec.md
+L_BG = (11, 14, 20)
+L_BORDER = (35, 42, 56)       # divider / track рамка
+L_TXT = (226, 231, 240)
+L_MUTED = (142, 152, 172)
+L_DIM = (92, 102, 120)        # footer label-и
+L_TEAL = (38, 178, 170)
+L_AMBER = (245, 175, 55)
+L_RED = (228, 82, 82)
+L_TRACK = (14, 18, 25)        # фон на bar-а
+L_REDBG = (42, 18, 24)        # crit track / strip fill
+L_REDBORDER = (58, 36, 48)    # crit track рамка
+
+
+def _l_rate_color(pct) -> tuple:
+    """5H / WK: <70 teal, 70-90 amber, ≥90 red. None → muted."""
+    if pct is None:
+        return L_MUTED
+    if pct >= 90:
+        return L_RED
+    if pct >= 70:
+        return L_AMBER
+    return L_TEAL
+
+
+def _l_ctx_color(status) -> tuple:
+    return {"critical": L_RED, "warn": L_AMBER, "safe": L_TEAL}.get(status, L_MUTED)
+
+
+def _lenti_bar(d, x, y, w, h, frac, color, red=False, cells=15, seg=4, gap=2) -> None:
+    """Segmented "лента": рамка + track фон + плътни сегменти до frac.
+
+    Празната част е само тъмен track (без outline-нати клетки, за разлика от
+    draw_segmented). Клетките се събират в (w-4)px съдържание: за w=92, cells=15
+    (15·4 + 14·2 = 88 = 92-4). При смяна на ширината подай подходящ cells.
+    """
+    border = L_REDBORDER if red else L_BORDER
+    track = L_REDBG if red else L_TRACK
+    d.rounded_rectangle([x, y, x + w - 1, y + h - 1], radius=2, outline=border, fill=track, width=1)
+    ix, iy, ih = x + 2, y + 2, h - 4  # 1px рамка + 1px padding
+    filled = int(round(max(0.0, min(1.0, frac)) * cells))
+    for i in range(filled):
+        cx0 = ix + i * (seg + gap)
+        d.rectangle([cx0, iy, cx0 + seg - 1, iy + ih - 1], fill=color)
+
+
+def render_smalltv_lenti(usage, snap, session=None, profile=None) -> Image.Image:
+    """SmallTV 240×240 "ЛЕНТИ" изглед (Claude Design handoff).
+
+    Terminal естетика: header `>_ slug` + модел, 3 segmented ленти (5H/WK/CTX),
+    footer TODAY/BURN/RESET. Critical strip при CTX≥100K, alarm рамка+banner при
+    rate-limit ≥95%. Фиксирана dark палитра (не се влияе от theme_for_now).
+    Спец: Claude Usage Physical Dashboard/handoff/smalltv-lenti-spec.md
+    """
+    W = H = 240
+    img = Image.new("RGB", (W, H), L_BG)
+    d = ImageDraw.Draw(img)
+
+    def fb(size):
+        return _font(FONT_BOLD, size)
+
+    def fr(size):
+        return _font(FONT_REG, size)
+
+    fh = usage.five_hour if usage else None
+    wk = usage.seven_day if usage else None
+    fhp = fh.utilization if fh else None
+    wkp = wk.utilization if wk else None
+    tok = session.tokens if session else None
+    ctx_status = sc.status_for(tok) if tok is not None else None
+    models = snap.block.models if snap and snap.block else []
+    slug = sc.display_slug(session.project_slug) if session else "no session"
+
+    breaches = alarm_breaches(usage)      # 5H/WK ≥ ALARM_PCT
+    alarm = bool(breaches)
+    critical = (tok is not None and tok >= sc.CTX_LIMIT) and not alarm  # alarm печели
+
+    # --- header (пада под banner-а при alarm) ---
+    if alarm:
+        d.rectangle([15, 8, 225, 30], fill=L_RED)
+        d.text((21, 19), "■ LIMIT ALARM", font=fb(13), fill=L_BG, anchor="lm")
+        names = [n for n, p in (("5H", fhp), ("WK", wkp))
+                 if p is not None and p >= ALARM_PCT]
+        d.text((219, 19), f"{'·'.join(names)} ≥ {ALARM_PCT}%",
+               font=fb(10), fill=L_BG, anchor="rm")
+        hy, dy, rows_y = 46, 56, (82, 142, 202)
+    else:  # critical вече няма strip → същото разстояние като normal
+        hy, dy, rows_y = 17, 28, (66, 134, 202)
+
+    d.text((10, hy), (">_ " + slug)[:20], font=fb(12), fill=L_TXT, anchor="lm")
+    d.text((230, hy), model_label(models).upper(), font=fb(10), fill=L_AMBER, anchor="rm")
+    d.line([10, dy, 230, dy], fill=L_BORDER, width=1)
+
+    # --- 3 gauge ленти: label + лента + голямо число + под него countdown/лимит ---
+    # 5H/WK subtext = колко остава до reset на брояча; CTX = лимит (или RESTART при crit).
+    ctx_col = _l_ctx_color(ctx_status)
+    ctx_frac = min(1.0, tok / max(sc.CTX_LIMIT, 1)) if tok is not None else 0.0
+    ctx_val = f"{tok // 1000}K" if tok is not None else "--"
+    if critical:
+        ctx_sub = "RESTART"
+    elif tok is not None:
+        ctx_sub = f"/{sc.CTX_LIMIT // 1000}K"
+    else:
+        ctx_sub = ""
+    c5, cwk = _l_rate_color(fhp), _l_rate_color(wkp)
+    specs = [
+        ("5H", (fhp or 0) / 100.0, c5, f"{fhp:.0f}%" if fhp is not None else "--",
+         uc._fmt_delta(fh.remaining()) if fh else "--", c5 == L_RED),
+        ("WK", (wkp or 0) / 100.0, cwk, f"{wkp:.0f}%" if wkp is not None else "--",
+         uc._fmt_delta(wk.remaining()) if wk else "--", cwk == L_RED),
+        ("CTX", ctx_frac, ctx_col, ctx_val, ctx_sub, critical),
+    ]
+    for (label, frac, color, val, sub, sub_red), y in zip(specs, rows_y):
+        d.text((10, y - 6), label, font=fb(16), fill=L_MUTED, anchor="lm")
+        _lenti_bar(d, 44, y - 16, 92, 16, frac, color, red=(color == L_RED))
+        vcol = L_TXT if color == L_TEAL else color
+        d.text((232, y - 4), val, font=fb(30), fill=vcol, anchor="rm")
+        if sub:
+            d.text((232, y + 22), sub, font=fb(13),
+                   fill=L_RED if sub_red else L_MUTED, anchor="rm")
+
+    # --- alarm рамка (5px, накрая — над всичко) ---
+    if alarm:
+        d.rectangle([0, 0, W - 1, H - 1], outline=L_RED, width=5)
+    return img
