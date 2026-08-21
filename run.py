@@ -218,21 +218,6 @@ class SmallTvDriver:
 
 
 def _loop(drivers) -> int:
-<<<<<<< HEAD
-    # Кеш на /usage: между API_INTERVAL fetch-овете рисуваме последния добър отговор.
-    # Локалните fetch-ове (ccusage, session) са евтини → бият всеки tick.
-    last_usage = None
-    last_usage_at = 0.0
-    try:
-        while True:
-            now = time.monotonic()
-            if last_usage is None or (now - last_usage_at) >= API_INTERVAL:
-                try:
-                    last_usage = uc.fetch_usage()
-                    last_usage_at = now
-                except uc.UsageError as exc:
-                    print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
-=======
     # кеш — на usage грешка (429/мрежа) рисуваме последното добро; при старт се
     # зарежда от диска, за да не виси '--' докато 429-ките отшумят след рестарт
     last_usage = uc.load_cache()
@@ -257,7 +242,6 @@ def _loop(drivers) -> int:
                               f"(рисувам кеш/--)", file=sys.stderr)
                     else:
                         print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
->>>>>>> 50d7ef1b67e9dda461d52e1fd4aef3960d4f9dab
             snap = _snapshot()
             session = _session()
             for drv in drivers:  # всеки backend независимо; един падне -> другият върви
