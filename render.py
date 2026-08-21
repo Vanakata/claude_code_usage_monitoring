@@ -309,7 +309,7 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None, session=None) ->
                 d.rounded_rectangle([bx0, by, fill_x, by + bh], radius=6, fill=ctx_color)
 
         # source slug (кой проект / кое репо) — clip до 20 chars
-        d.text(((cx0 + cx1) / 2, 174), slug[:20], font=fr(12), fill=MUTED, anchor="ma")
+        d.text(((cx0 + cx1) / 2, 174), slug[:20], font=fb(16), fill=MUTED, anchor="ma")
 
         # divider
         d.line([cx0 + 16, 196, cx1 - 14, 196], fill=RING_TRACK, width=1)
