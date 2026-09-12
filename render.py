@@ -467,12 +467,13 @@ def render_smalltv_lenti(usage, snap, session=None, profile=None) -> Image.Image
     else:
         ctx_sub = ""
     c5, cwk = _l_rate_color(fhp), _l_rate_color(wkp)
+    # Ред: CTX най-горе (гледа се най-често — пълни се за минути), после 5H и WK.
     specs = [
+        ("CTX", ctx_frac, ctx_col, ctx_val, ctx_sub, critical),
         ("5H", (fhp or 0) / 100.0, c5, f"{fhp:.0f}%" if fhp is not None else "--",
          uc._fmt_delta(fh.remaining()) if fh else "--", c5 == L_RED),
         ("WK", (wkp or 0) / 100.0, cwk, f"{wkp:.0f}%" if wkp is not None else "--",
          uc._fmt_delta(wk.remaining()) if wk else "--", cwk == L_RED),
-        ("CTX", ctx_frac, ctx_col, ctx_val, ctx_sub, critical),
     ]
     for (label, frac, color, val, sub, sub_red), y in zip(specs, rows_y):
         d.text((10, y - 6), label, font=fb(16), fill=L_MUTED, anchor="lm")
