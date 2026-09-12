@@ -217,6 +217,20 @@ class SmallTvDriver:
             self.handle = None
 
 
+def _stale(u) -> bool:
+    """True когато in-memory кешът е надживял CACHE_MAX_AGE.
+
+    load_cache() пази това правило само при старт. Без проверка и в loop-а един
+    дълъг fail (излязъл си от Claude, счупен endpoint) държи ПОСЛЕДНИТЕ добри
+    проценти на екрана с дни — изглежда като зациклил дисплей и подвежда.
+    По-добре '--'.
+    """
+    if u is None:
+        return False
+    age = (datetime.now(timezone.utc) - u.generated_at).total_seconds()
+    return age > uc.CACHE_MAX_AGE
+
+
 def _loop(drivers) -> int:
     # кеш — на usage грешка (429/мрежа) рисуваме последното добро; при старт се
     # зарежда от диска, за да не виси '--' докато 429-ките отшумят след рестарт
@@ -242,6 +256,11 @@ def _loop(drivers) -> int:
                               f"(рисувам кеш/--)", file=sys.stderr)
                     else:
                         print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
+            if _stale(last_usage):
+                age = datetime.now(timezone.utc) - last_usage.generated_at
+                print(f"[run] кешът е {uc._fmt_delta(age)} стар — рисувам '--' "
+                      f"вместо замразени числа", file=sys.stderr)
+                last_usage = None
             snap = _snapshot()
             session = _session()
             for drv in drivers:  # всеки backend независимо; един падне -> другият върви
