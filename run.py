@@ -238,23 +238,28 @@ def _loop(drivers) -> int:
     if last_usage:
         age = datetime.now(timezone.utc) - last_usage.generated_at
         print(f"[run] usage от disk кеша ({uc._fmt_delta(age)} стар)")
-    skip = penalty = 0  # 429 backoff в тикове: 1, 2, 4 → cap 5 (~5 мин при 60s)
+    # Fetch-ът върви по СОБСТВЕН такт (API_INTERVAL), не по INTERVAL — рендерът е
+    # на 15s, но /usage не понася 240 заявки/час: дърпаше на всеки тик и endpoint-ът
+    # 429-ваше вечно, кешът изтичаше (12h) и екранът висеше на '--'.
+    penalty = 0  # 429 backoff множител върху API_INTERVAL: 1, 2, 4 → cap 5 (~5 мин)
+    next_fetch = 0.0  # monotonic deadline; 0 = дърпай веднага при старт
     try:
         while True:
-            if skip:
-                skip -= 1
-            else:
+            now_m = time.monotonic()
+            if now_m >= next_fetch:
                 try:
                     last_usage = uc.fetch_usage()
                     uc.save_cache(last_usage)
                     penalty = 0
+                    next_fetch = now_m + API_INTERVAL
                 except uc.UsageError as exc:
                     if "429" in str(exc):  # rate limit → отстъпи, кешът покрива
                         penalty = min(penalty * 2 or 1, 5)
-                        skip = penalty
-                        print(f"[run] usage 429 — backoff {penalty * INTERVAL}s "
+                        next_fetch = now_m + API_INTERVAL * penalty
+                        print(f"[run] usage 429 — backoff {API_INTERVAL * penalty}s "
                               f"(рисувам кеш/--)", file=sys.stderr)
                     else:
+                        next_fetch = now_m + API_INTERVAL
                         print(f"[run] usage грешка (рисувам кеш/--): {exc}", file=sys.stderr)
             if _stale(last_usage):
                 age = datetime.now(timezone.utc) - last_usage.generated_at
