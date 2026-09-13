@@ -241,7 +241,10 @@ def _loop(drivers) -> int:
     # Fetch-ът върви по СОБСТВЕН такт (API_INTERVAL), не по INTERVAL — рендерът е
     # на 15s, но /usage не понася 240 заявки/час: дърпаше на всеки тик и endpoint-ът
     # 429-ваше вечно, кешът изтичаше (12h) и екранът висеше на '--'.
-    penalty = 0  # 429 backoff множител върху API_INTERVAL: 1, 2, 4 → cap 5 (~5 мин)
+    # Cap-ът е 30x API_INTERVAL (~30 мин): endpoint-ът остава rate-limited с часове,
+    # ако веднъж си го спамил, и чукането на 5 мин само държи bucket-а празен.
+    # Кешът покрива дупката, а 12h правилото пази от замразени числа за дни.
+    penalty = 0  # 429 backoff множител: 1, 2, 4, 8, 16 → cap 30
     next_fetch = 0.0  # monotonic deadline; 0 = дърпай веднага при старт
     try:
         while True:
@@ -254,9 +257,11 @@ def _loop(drivers) -> int:
                     next_fetch = now_m + API_INTERVAL
                 except uc.UsageError as exc:
                     if "429" in str(exc):  # rate limit → отстъпи, кешът покрива
-                        penalty = min(penalty * 2 or 1, 5)
-                        next_fetch = now_m + API_INTERVAL * penalty
-                        print(f"[run] usage 429 — backoff {API_INTERVAL * penalty}s "
+                        penalty = min(penalty * 2 or 1, 30)
+                        wait = max(API_INTERVAL * penalty,
+                                   getattr(exc, "retry_after", 0) or 0)
+                        next_fetch = now_m + wait
+                        print(f"[run] usage 429 — backoff {wait}s "
                               f"(рисувам кеш/--)", file=sys.stderr)
                     else:
                         next_fetch = now_m + API_INTERVAL

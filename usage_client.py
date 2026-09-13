@@ -40,7 +40,15 @@ CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
 
 class UsageError(RuntimeError):
-    """Липсва token, 401/мрежа, или невалиден отговор."""
+    """Липсва token, 401/мрежа, или невалиден отговор.
+
+    retry_after: секундите от Retry-After хедъра при 429 (0/None = няма полезна
+    стойност — endpoint-ът често връща 0 и решението остава за backoff-а).
+    """
+
+    def __init__(self, *args, retry_after: Optional[int] = None):
+        super().__init__(*args)
+        self.retry_after = retry_after
 
 
 @dataclass
@@ -190,6 +198,13 @@ def fetch_usage() -> Usage:
                 raise UsageError(f"мрежова грешка (след refresh): {exc2.reason}") from exc2
             except (http.client.HTTPException, OSError) as exc2:
                 raise UsageError(f"мрежова грешка (след refresh): {type(exc2).__name__}: {exc2}") from exc2
+        elif exc.code == 429:
+            try:
+                ra = int(exc.headers.get("Retry-After") or 0)
+            except (TypeError, ValueError):
+                ra = 0
+            raise UsageError("HTTP 429 от /api/oauth/usage",
+                             retry_after=ra) from exc
         else:
             raise UsageError(f"HTTP {exc.code} от /api/oauth/usage") from exc
     except urllib.error.URLError as exc:
