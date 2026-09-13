@@ -18,6 +18,10 @@ $action    = New-ScheduledTaskAction -Execute $cmd -Argument $Target
 # Два trigger-а: старт при logon + watchdog на 10 мин. (MultipleInstances=IgnoreNew ->
 # ако loop-ът върви, повторният старт се игнорира; ако е умрял, възкръсва до 10 мин.)
 $logon    = New-ScheduledTaskTrigger -AtLogOn
+# 30s забавяне — при logon WiFi-ят още не е вдигнат и първият connect() хаби
+# един напразен /24 scan за SmallTV-то. Loop-ът така или иначе retry-ва, но
+# така първият кадър излиза чист.
+$logon.Delay = 'PT30S'
 $watchdog = New-ScheduledTaskTrigger -Once -At (Get-Date) `
     -RepetitionInterval (New-TimeSpan -Minutes 10) -RepetitionDuration (New-TimeSpan -Days 3650)
 

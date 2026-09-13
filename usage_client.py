@@ -123,6 +123,31 @@ def refresh_token() -> str:
     return oauth["accessToken"]
 
 
+def refresh_or_adopt(stale: str) -> str:
+    """Свеж access token: от refresh, или осиновен от диска ако друг ни е изпреварил.
+
+    Claude Code и този loop делят едни credentials, а refresh token-ът е one-shot
+    (сървърът го ротира). Който викне втори, получава 403 — но първият вече е
+    записал свеж accessToken на диска. Без това standalone loop-ът умираше на
+    "token refresh неуспешен: HTTP 403" и екранът висеше, докато не пуснеш
+    Claude Code да се пре-логне.
+    """
+    try:
+        return refresh_token()
+    except UsageError:
+        # другият процес пише credentials атомарно, но може да е насред refresh-а
+        for pause in (0, 2):
+            if pause:
+                time.sleep(pause)
+            try:
+                fresh = (_read_creds().get("claudeAiOauth") or {}).get("accessToken")
+            except UsageError:
+                fresh = None
+            if fresh and fresh != stale:
+                return fresh
+        raise
+
+
 def _parse_window(obj: Optional[dict]) -> UsageWindow:
     obj = obj or {}
     util = obj.get("utilization")
@@ -151,11 +176,12 @@ def _get_usage(token: str) -> dict:
 
 def fetch_usage() -> Usage:
     """Дърпа реалните rate-limit данни (без кеш). На 401 → refresh → retry."""
+    stale = _read_token()
     try:
-        data = _get_usage(_read_token())
+        data = _get_usage(stale)
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
-            token = refresh_token()  # token изтекъл -> подновяваме и опитваме пак
+            token = refresh_or_adopt(stale)  # изтекъл -> подновяваме/осиновяваме
             try:
                 data = _get_usage(token)
             except urllib.error.HTTPError as exc2:

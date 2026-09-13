@@ -19,7 +19,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
-from usage_client import CREDENTIALS_PATH, OAUTH_BETA, UsageError, _read_token, refresh_token
+from usage_client import (CREDENTIALS_PATH, OAUTH_BETA, UsageError, _read_token,
+                           refresh_or_adopt)
 
 PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
 
@@ -50,15 +51,16 @@ def _get_profile(token: str) -> dict:
 
 def fetch_profile() -> Profile:
     """Дърпа email + org name. На 401 → refresh → retry."""
+    stale = _read_token()
     try:
-        data = _get_profile(_read_token())
+        data = _get_profile(stale)
     except urllib.error.HTTPError as exc:
         if exc.code == 401:
-            # refresh_token() може да хвърли UsageError (напр. HTTP 403 при invalid
+            # refresh_or_adopt() може да хвърли UsageError (напр. HTTP 403 при invalid
             # refresh) — превеждаме към ProfileError, за да не bubble-не суров
             # UsageError към caller-а, който очаква fail-soft върху ProfileError.
             try:
-                token = refresh_token()
+                token = refresh_or_adopt(stale)
             except UsageError as exc_r:
                 raise ProfileError(str(exc_r)) from exc_r
             try:
