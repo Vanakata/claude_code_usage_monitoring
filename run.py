@@ -64,14 +64,14 @@ INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "15"))
 # Loop-ът извиква fetch_usage() само ако прошло > API_INTERVAL от последния успех.
 API_INTERVAL = int(os.environ.get("CLAUDE_USAGE_API_INTERVAL", "60"))
 SETTLE_SECONDS = int(os.environ.get("CLAUDE_USAGE_SETTLE", "4"))  # MCU boot след replug
-# Screensaver (Turing only): screen off през нощните часове ИЛИ когато няма активен
-# ccusage 5h блок (не си кодил наскоро). Часовете са в local time.
+# Screensaver (Turing + SmallTV, едно и също правило): screen off през нощните часове
+# ИЛИ когато няма активен ccusage 5h блок (не си кодил наскоро). Local time.
 SLEEP_START = int(os.environ.get("CLAUDE_USAGE_SLEEP_START", "22"))
 SLEEP_END = int(os.environ.get("CLAUDE_USAGE_SLEEP_END", "7"))
 
 
 def _should_sleep(snap, now: datetime) -> bool:
-    """True когато Turing трябва да е ScreenOff (нощ ИЛИ без активна сесия).
+    """True когато дисплеят трябва да е ScreenOff (нощ ИЛИ без активна сесия).
 
     При snap=None (ccusage грешка) не гадаем: оставяме дисплея буден, за да не
     угасне при преходни ccusage failures.
@@ -218,14 +218,31 @@ class SmallTvDriver:
         self.handle = None
         self.push_interval = int(os.environ.get("CLAUDE_USAGE_SMALLTV_INTERVAL", "60"))
         self.last_push_at = 0.0
+        self.screen_off = False
 
     def tick(self, usage, snap, session) -> None:
         now = time.monotonic()
-        if self.handle is not None and (now - self.last_push_at) < self.push_interval:
+        sleep = _should_sleep(snap, datetime.now())
+        # cooldown само докато състоянието на screensaver-а не се сменя — заспиване/
+        # събуждане минава веднага, а не до 60s по-късно
+        if (self.handle is not None and sleep == self.screen_off
+                and (now - self.last_push_at) < self.push_interval):
             return  # cooldown — щади flash-а
         try:
             if self.handle is None:
-                self.handle = self.backend.connect()  # cleanup + theme=3 + autoplay off
+                self.handle = self.backend.connect()  # cleanup + theme=3 + autoplay off + brt
+                self.screen_off = False  # connect() връща нормалната яркост
+            # screensaver — същото правило като Turing (_should_sleep)
+            if sleep:
+                if not self.screen_off:
+                    self.backend.screen_off(self.handle)
+                    self.screen_off = True
+                    print("[run] smalltv: screensaver ON")
+                return
+            if self.screen_off:
+                self.backend.screen_on(self.handle)
+                self.screen_off = False
+                print("[run] smalltv: screensaver OFF")
             self.backend.render(self.handle, usage, snap, session)
             self.last_push_at = now
             print(_status_line("smalltv", usage, session))

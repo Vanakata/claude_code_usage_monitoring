@@ -44,6 +44,8 @@ IMG_PATH = IMG_DIR + IMG_NAME
 JPEG_QUALITY = 90
 # Яркост (-10..100, reverse-engineer-нат от web UI: `name="brt"`). 10 е default-а на Ванака.
 BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_SMALLTV_BRIGHTNESS", "10"))
+# Screensaver: SmallTV няма истински ScreenOff -> черен кадър + минимална яркост.
+SLEEP_BRIGHTNESS = int(os.environ.get("CLAUDE_USAGE_SMALLTV_SLEEP_BRIGHTNESS", "-10"))
 # Изглед: 'lenti' (segmented ленти + footer; default) или 'rings' (дублирани 5H/WK).
 MODE = os.environ.get("CLAUDE_USAGE_SMALLTV_MODE", "lenti").lower()
 
@@ -227,6 +229,23 @@ def render(_handle, usage, snap, session=None) -> None:
     frame.save(buf, format="JPEG", quality=JPEG_QUALITY)
     _upload_jpeg(buf.getvalue())
     _get("/set?img=" + urllib.parse.quote(IMG_PATH, safe=""))
+
+
+def screen_off(_handle) -> None:
+    """Screensaver ON: черен кадър (същото име -> презапис, без трупане на flash) + brt min.
+
+    Един upload при заспиване, после нищо до събуждане -> flash-ът почива цяла нощ.
+    """
+    buf = io.BytesIO()
+    Image.new("RGB", (240, 240), (0, 0, 0)).save(buf, format="JPEG", quality=JPEG_QUALITY)
+    _upload_jpeg(buf.getvalue())
+    _get("/set?img=" + urllib.parse.quote(IMG_PATH, safe=""))
+    _get(f"/set?brt={SLEEP_BRIGHTNESS}")
+
+
+def screen_on(_handle) -> None:
+    """Screensaver OFF: връща нормалната яркост; кадърът идва със следващия render()."""
+    _get(f"/set?brt={BRIGHTNESS}")
 
 
 def render_once() -> int:
