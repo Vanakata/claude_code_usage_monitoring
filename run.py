@@ -23,6 +23,35 @@ try:
 except (AttributeError, ValueError):
     pass
 
+
+class _Stamped:
+    """Wrapper на stdout/stderr: слага `YYYY-MM-DD HH:MM:SS` в началото на всеки ред.
+
+    Без timestamps run.log не казва КОГА е дошъл 429/403 — диагнозата на
+    висящ екран ставаше на гадаене. Обвиваме потока (не print-овете), за да
+    хванем и редовете от display_*.py, и traceback-овете.
+    """
+
+    def __init__(self, stream):
+        self._s = stream
+        self._bol = True  # следващият write е в началото на ред
+
+    def write(self, text):
+        out = []
+        for part in text.splitlines(keepends=True):
+            if self._bol:
+                out.append(datetime.now().strftime("%Y-%m-%d %H:%M:%S "))
+            out.append(part)
+            self._bol = part.endswith("\n")
+        return self._s.write("".join(out))
+
+    def __getattr__(self, name):  # flush, encoding, fileno, ... -> оригинала
+        return getattr(self._s, name)
+
+
+sys.stdout = _Stamped(sys.stdout)
+sys.stderr = _Stamped(sys.stderr)
+
 import serial  # noqa: E402
 from serial.tools.list_ports import comports  # noqa: E402
 
