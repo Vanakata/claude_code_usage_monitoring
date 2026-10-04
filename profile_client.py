@@ -14,6 +14,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -23,6 +24,10 @@ from usage_client import (CREDENTIALS_PATH, OAUTH_BETA, USER_AGENT, UsageError,
                            _read_token, refresh_or_adopt)
 
 PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
+# Акаунтът, който Claude Code ПОКАЗВА като активен (oauthAccount). Не е източник
+# на auth — token-ът в credentials може да е от друг акаунт (видяно: oauthAccount
+# = личен gmail, token = A1 team) и тогава екранът тихо показва чужди проценти.
+CLAUDE_JSON_PATH = os.path.expanduser("~/.claude.json")
 
 
 class ProfileError(RuntimeError):
@@ -34,6 +39,9 @@ class Profile:
     email: str
     full_name: str
     org_name: str
+    account_uuid: str = ""
+    # email-ът от ~/.claude.json, ако е РАЗЛИЧЕН акаунт от token-а; "" = съвпадат/няма данни
+    mismatch_email: str = ""
 
 
 def _get_profile(token: str) -> dict:
@@ -88,7 +96,18 @@ def fetch_profile() -> Profile:
         email=acc.get("email") or "",
         full_name=acc.get("full_name") or "",
         org_name=org.get("name") or "",
+        account_uuid=acc.get("uuid") or "",
     )
+
+
+def active_account() -> tuple[str, str]:
+    """(accountUuid, email) от ~/.claude.json → oauthAccount; ("", "") при липса."""
+    try:
+        with open(CLAUDE_JSON_PATH, encoding="utf-8") as f:
+            acc = json.load(f).get("oauthAccount") or {}
+    except (OSError, ValueError):
+        return "", ""
+    return acc.get("accountUuid") or "", acc.get("emailAddress") or ""
 
 
 # --- mtime-based cache (за да реагираме на `claude login` без рестарт) ---
@@ -97,6 +116,25 @@ def fetch_profile() -> Profile:
 # акаунт (с `claude login` -> пренаписва credentials) се хваща веднага.
 _cache: Optional[Profile] = None
 _cache_mtime: float = 0.0
+_cj_mtime: float = 0.0  # ~/.claude.json mtime при последната mismatch проверка
+_warned: str = ""       # последното логнато mismatch състояние (лог само при промяна)
+
+
+def _check_mismatch(p: Profile) -> None:
+    """Сверява token акаунта с oauthAccount; логва само при смяна на състоянието."""
+    global _warned
+    uuid, email = active_account()
+    bad = bool(uuid and p.account_uuid and uuid != p.account_uuid)
+    p.mismatch_email = email if bad else ""
+    state = f"{p.account_uuid}|{uuid}" if bad else ""
+    if state != _warned:
+        if bad:
+            print(f"[profile] ВНИМАНИЕ: token-ът е на {p.email}, а Claude Code показва "
+                  f"{email} като активен — екранът е за {p.email}. Оправя се с /login.",
+                  file=sys.stderr)
+        elif _warned:
+            print(f"[profile] акаунтите пак съвпадат ({p.email})", file=sys.stderr)
+        _warned = state
 
 
 def get_profile() -> Optional[Profile]:
@@ -106,25 +144,35 @@ def get_profile() -> Optional[Profile]:
     още няма успешно дърпан). mtime не се update-ва при грешка → следващият
     tick ще опита пак.
     """
-    global _cache, _cache_mtime
+    global _cache, _cache_mtime, _cj_mtime
     try:
         mt = os.path.getmtime(CREDENTIALS_PATH)
     except OSError:
         return _cache  # няма файл -> върни каквото имаме (или None)
-    if mt == _cache_mtime and _cache is not None:
-        return _cache
     try:
-        _cache = fetch_profile()
-        _cache_mtime = mt
-    except ProfileError:
-        pass  # запазваме стария кеш; следващият tick ще опита пак
+        cj = os.path.getmtime(CLAUDE_JSON_PATH)
+    except OSError:
+        cj = 0.0
+    if mt == _cache_mtime and cj == _cj_mtime and _cache is not None:
+        return _cache
+    if mt != _cache_mtime or _cache is None:
+        try:
+            _cache = fetch_profile()
+            _cache_mtime = mt
+        except ProfileError:
+            pass  # запазваме стария кеш; следващият tick ще опита пак
+    if _cache is not None:
+        # ~/.claude.json се пише постоянно (history, кешове) -> само локално четене,
+        # без HTTP; profile-ът се пре-дърпва единствено при смяна на credentials
+        _check_mismatch(_cache)
+        _cj_mtime = cj
     return _cache
 
 
 if __name__ == "__main__":
-    import sys
     try:
         sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     except (AttributeError, ValueError):
         pass
     try:
@@ -135,3 +183,6 @@ if __name__ == "__main__":
     print(f"email: {p.email}")
     print(f"name:  {p.full_name}")
     print(f"org:   {p.org_name}")
+    _check_mismatch(p)
+    if p.mismatch_email:
+        print(f"active (~/.claude.json): {p.mismatch_email}  <-- РАЗЛИЧЕН акаунт")

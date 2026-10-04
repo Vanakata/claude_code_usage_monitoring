@@ -261,7 +261,9 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None, session=None) ->
             d.text((16, hh // 2), "CLAUDE USAGE", font=fb(20), fill=HEADER_TXT, anchor="lm")
             if profile and profile.email:
                 d.text((w // 2, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="mm")
-                d.text((w - 14, hh // 2), profile.email, font=fr(13), fill=HEADER_TXT, anchor="rm")
+                d.text((w - 14, hh // 2), ("! " if profile.mismatch_email else "") + profile.email,
+                       font=fr(13), fill=L_RED if profile.mismatch_email else HEADER_TXT,
+                       anchor="rm")
             else:
                 d.text((w - 14, hh // 2), model_label(models), font=fb(16), fill=DB_AMBER, anchor="rm")
 
@@ -336,7 +338,9 @@ def render_dashboard(usage, snap, w: int, h: int, profile=None, session=None) ->
                    fill=(255, 255, 255), anchor="lm")
         else:
             if profile and profile.email:
-                d.text((8, hh // 2), profile.email, font=fr(11), fill=HEADER_TXT, anchor="lm")
+                d.text((8, hh // 2), ("! " if profile.mismatch_email else "") + profile.email,
+                       font=fr(11), fill=L_RED if profile.mismatch_email else HEADER_TXT,
+                       anchor="lm")
             else:
                 d.text((8, hh // 2), "CLAUDE", font=fb(14), fill=HEADER_TXT, anchor="lm")
             d.text((w - 7, hh // 2), model_label(models), font=fb(12), fill=DB_AMBER, anchor="rm")
@@ -483,6 +487,13 @@ def render_smalltv_lenti(usage, snap, session=None, profile=None) -> Image.Image
         if sub:
             d.text((232, y + 22), sub, font=fb(13),
                    fill=L_RED if sub_red else L_MUTED, anchor="rm")
+
+    # --- акаунт (долу-ляво, под WK лентата): чии са 5H/WK процентите ---
+    # Червено + "!" когато token-ът е на друг акаунт от активния в Claude Code.
+    if profile and profile.email:
+        bad = bool(profile.mismatch_email)
+        d.text((10, 226), (("! " if bad else "") + profile.email)[:28], font=fb(10) if bad else fr(10),
+               fill=L_RED if bad else L_DIM, anchor="lm")
 
     # --- alarm рамка (5px, накрая — над всичко) ---
     if alarm:

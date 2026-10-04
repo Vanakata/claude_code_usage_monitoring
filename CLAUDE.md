@@ -79,7 +79,7 @@ profile_client  ─┘                                ▲
 
 Headers и за двата GET-а: `Authorization: Bearer <oauth>`, `anthropic-beta: oauth-2025-04-20`. Token се чете от `~/.claude/.credentials.json` → `claudeAiOauth.accessToken`. **На 401 автоматичен refresh → retry**; credentials се пишат атомарно (`.tmp` + `os.replace`), за да не corrupt-нат при паралелен Claude Code refresh.
 
-**Кой акаунт се показва** = този, в който Claude Code на ТАЗИ машина е логнат (interactive `claude login`, не API key).
+**Кой акаунт се показва** = този, в който Claude Code на ТАЗИ машина е логнат (interactive `claude login`, не API key). Реално = акаунтът на token-а в `.credentials.json`, който може да се разминава с `~/.claude.json` → `oauthAccount` (той е само кеш за UI). `profile_client` ги сверява по account UUID: при разминаване логва `[profile] ВНИМАНИЕ` и email-ът на екрана излиза червен с `!`. Оправя се с `/login`.
 
 ## Hardware уловки
 
