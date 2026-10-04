@@ -492,8 +492,9 @@ def render_smalltv_lenti(usage, snap, session=None, profile=None) -> Image.Image
     # Червено + "!" когато token-ът е на друг акаунт от активния в Claude Code.
     if profile and profile.email:
         bad = bool(profile.mismatch_email)
-        d.text((10, 226), (("! " if bad else "") + profile.email)[:28], font=fb(10) if bad else fr(10),
-               fill=L_RED if bad else L_DIM, anchor="lm")
+        # 13px bold ≈ 8px/знак -> до ~21 знака, без да застъпи WK countdown-а вдясно
+        d.text((10, 226), (("! " if bad else "") + profile.email)[:21], font=fb(13),
+               fill=L_RED if bad else L_MUTED, anchor="lm")
 
     # --- alarm рамка (5px, накрая — над всичко) ---
     if alarm:
