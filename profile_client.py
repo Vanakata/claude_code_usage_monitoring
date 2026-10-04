@@ -19,8 +19,8 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
-from usage_client import (CREDENTIALS_PATH, OAUTH_BETA, UsageError, _read_token,
-                           refresh_or_adopt)
+from usage_client import (CREDENTIALS_PATH, OAUTH_BETA, USER_AGENT, UsageError,
+                           _read_token, refresh_or_adopt)
 
 PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
 
@@ -43,6 +43,7 @@ def _get_profile(token: str) -> dict:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
             "anthropic-beta": OAUTH_BETA,
+            "User-Agent": USER_AGENT,
         },
     )
     with urllib.request.urlopen(req, timeout=15) as resp:

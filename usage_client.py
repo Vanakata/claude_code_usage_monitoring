@@ -37,6 +37,10 @@ OAUTH_BETA = "oauth-2025-04-20"
 # OAuth refresh (стойности от Claude Code extension.js)
 TOKEN_URL = "https://platform.claude.com/v1/oauth/token"
 CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+# platform.claude.com е зад Cloudflare, който реже default "Python-urllib/x.y" UA-то
+# с 403 (error code 1010) -> refresh-ът НИКОГА не минаваше и standalone loop-ът
+# виждаше 403 при всяко изтичане на token-а. Представяме се като claude-cli.
+USER_AGENT = "claude-cli/2.1.289 (external, cli)"
 
 
 class UsageError(RuntimeError):
@@ -104,7 +108,8 @@ def refresh_token() -> str:
         "scope": " ".join(scopes),
     }).encode()
     req = urllib.request.Request(TOKEN_URL, data=body,
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json",
+                                          "User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             tok = json.load(resp)
@@ -176,6 +181,7 @@ def _get_usage(token: str) -> dict:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {token}",
             "anthropic-beta": OAUTH_BETA,
+            "User-Agent": USER_AGENT,
         },
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
