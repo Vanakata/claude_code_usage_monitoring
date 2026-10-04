@@ -64,22 +64,25 @@ INTERVAL = int(os.environ.get("CLAUDE_USAGE_INTERVAL", "15"))
 # Loop-ът извиква fetch_usage() само ако прошло > API_INTERVAL от последния успех.
 API_INTERVAL = int(os.environ.get("CLAUDE_USAGE_API_INTERVAL", "60"))
 SETTLE_SECONDS = int(os.environ.get("CLAUDE_USAGE_SETTLE", "4"))  # MCU boot след replug
-# Screensaver (Turing + SmallTV, едно и също правило): screen off през нощните часове
-# ИЛИ когато няма активен ccusage 5h блок (не си кодил наскоро). Local time.
-SLEEP_START = int(os.environ.get("CLAUDE_USAGE_SLEEP_START", "22"))
-SLEEP_END = int(os.environ.get("CLAUDE_USAGE_SLEEP_END", "7"))
+# Screensaver (Turing + SmallTV, едно и също правило): screen off след IDLE_MIN минути
+# без активност в НИТО ЕДНА Claude Code сесия (CLI или Desktop — mtime на jsonl-ите).
+# Преди беше нощ 22-07 + ccusage активен блок: гасеше докато още работиш вечер, а
+# ccusage гърми на някои машини и тогава второто правило изобщо не хващаше.
+IDLE_MIN = int(os.environ.get("CLAUDE_USAGE_IDLE_MIN", "30"))
 
 
-def _should_sleep(snap, now: datetime) -> bool:
-    """True когато дисплеят трябва да е ScreenOff (нощ ИЛИ без активна сесия).
+def _should_sleep(now: datetime) -> bool:
+    """True когато дисплеят трябва да е ScreenOff (> IDLE_MIN без сесийна активност).
 
-    При snap=None (ccusage грешка) не гадаем: оставяме дисплея буден, за да не
-    угасне при преходни ccusage failures.
+    `now` е aware (UTC). При IO грешка не гадаем: оставяме дисплея буден.
     """
-    h = now.hour
-    is_night = (h >= SLEEP_START or h < SLEEP_END) if SLEEP_START > SLEEP_END \
-        else (SLEEP_START <= h < SLEEP_END)
-    return is_night or (snap is not None and not snap.has_active_block)
+    try:
+        last = sc.last_activity()
+    except Exception:
+        return False
+    if last is None:
+        return True  # няма нито една сесия -> няма какво да гледаш
+    return (now - last).total_seconds() > IDLE_MIN * 60
 
 
 def kill_turmo() -> None:
@@ -169,7 +172,7 @@ class TuringDriver:
                     self.lcd = self.d.connect(port)
                 # screensaver: пропускаме render когато screen е off (спестява serial трафик
                 # и запазва MCU-то от излишни bitmap-и до чер екран)
-                if _should_sleep(snap, datetime.now()):
+                if _should_sleep(datetime.now(timezone.utc)):
                     if not getattr(self.lcd, "_screen_off", False):
                         self.lcd.ScreenOff()
                         self.lcd._screen_off = True
@@ -222,7 +225,7 @@ class SmallTvDriver:
 
     def tick(self, usage, snap, session) -> None:
         now = time.monotonic()
-        sleep = _should_sleep(snap, datetime.now())
+        sleep = _should_sleep(datetime.now(timezone.utc))
         # cooldown само докато състоянието на screensaver-а не се сменя — заспиване/
         # събуждане минава веднага, а не до 60s по-късно
         if (self.handle is not None and sleep == self.screen_off

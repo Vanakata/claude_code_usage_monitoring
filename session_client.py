@@ -58,6 +58,19 @@ def _find_latest_jsonl() -> Optional[Path]:
     return latest
 
 
+def last_activity() -> Optional[datetime]:
+    """Кога последно е писала НЯКОЯ Claude Code сесия (CLI или Desktop) — mtime на
+    най-новия jsonl. None ако няма сесии изобщо. Ползва се за screensaver-а.
+    """
+    latest = _find_latest_jsonl()
+    if latest is None:
+        return None
+    try:
+        return datetime.fromtimestamp(latest.stat().st_mtime, timezone.utc)
+    except OSError:
+        return None
+
+
 def _tail_lines(path: Path, max_bytes: int = _TAIL_BYTES) -> List[str]:
     """Последните ~max_bytes байта → комплетни редове (без съсечен префикс)."""
     try:

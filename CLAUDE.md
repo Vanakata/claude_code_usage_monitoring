@@ -38,7 +38,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 | `CLAUDE_USAGE_BRIGHTNESS` | `15` | 0–255 (Turing) |
 | `CLAUDE_USAGE_SMALLTV_IP` | _(auto)_ | Празно → auto-discovery по мрежата (`/set`=='FAIL' probe, кеш в `work/smalltv_ip.txt`). Задай ръчно само за да прескочиш scan-а. |
 | `CLAUDE_USAGE_SMALLTV_BRIGHTNESS` | `10` | −10..100 (SmallTV `/set?brt=`) |
-| `CLAUDE_USAGE_SLEEP_START` / `_SLEEP_END` | `22` / `7` | screensaver часове (и за двата дисплея; плюс off без активен ccusage блок) |
+| `CLAUDE_USAGE_IDLE_MIN` | `30` | screensaver (и двата дисплея): off след N мин без активност в Claude Code сесия (CLI или Desktop) |
 | `CLAUDE_USAGE_SMALLTV_SLEEP_BRIGHTNESS` | `-10` | яркост на SmallTV в screensaver (черен кадър + тази яркост) |
 | `CLAUDE_USAGE_THEME` | `auto` | `light` / `dark` / `auto` (по час) |
 | `CLAUDE_USAGE_DAY_START` / `_DAY_END` | `7` / `19` | граници за auto theme |
