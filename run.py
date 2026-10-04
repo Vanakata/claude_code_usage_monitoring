@@ -185,12 +185,7 @@ class TuringDriver:
                     self._drop()
                     print("[run] turing: serial reopen — чист reconnect", file=sys.stderr)
                     continue  # чист reconnect веднага, в същия тик
-                if usage:
-                    ctx_s = f" ctx {session.tokens // 1000}K" if session else ""
-                    print(f"[run] turing: 5h {usage.five_hour.utilization:.0f}% "
-                          f"wk {usage.seven_day.utilization:.0f}%{ctx_s}")
-                else:
-                    print("[run] turing: кадър без usage данни (--)")
+                print(_status_line("turing", usage, session))
                 return
             except Exception as exc:  # serial/render -> reconnect следващия тик
                 msg = str(exc)
@@ -233,17 +228,22 @@ class SmallTvDriver:
                 self.handle = self.backend.connect()  # cleanup + theme=3 + autoplay off
             self.backend.render(self.handle, usage, snap, session)
             self.last_push_at = now
-            if usage:
-                print(f"[run] smalltv: 5h {usage.five_hour.utilization:.0f}% "
-                      f"wk {usage.seven_day.utilization:.0f}%")
-            else:
-                print("[run] smalltv: кадър без usage данни (--)")
+            print(_status_line("smalltv", usage, session))
         except self.backend.SmallTvError as exc:
             print(f"[run] smalltv мрежова грешка (reconnect): {exc}", file=sys.stderr)
             self.handle = None
         except Exception as exc:
             print(f"[run] smalltv грешка: {type(exc).__name__}: {str(exc)[:140]}", file=sys.stderr)
             self.handle = None
+
+
+def _status_line(name, usage, session) -> str:
+    """Общ лог ред за всеки driver — един и същ формат за Turing и SmallTV."""
+    if not usage:
+        return f"[run] {name}: кадър без usage данни (--)"
+    ctx_s = f" ctx {session.tokens // 1000}K" if session else ""
+    return (f"[run] {name}: 5h {usage.five_hour.utilization:.0f}% "
+            f"wk {usage.seven_day.utilization:.0f}%{ctx_s}")
 
 
 def _stale(u) -> bool:

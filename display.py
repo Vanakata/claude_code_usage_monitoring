@@ -146,7 +146,9 @@ def render(lcd: LcdCommRevA, usage, snap, session=None) -> None:
     reset_key = wk.resets_at.astimezone().date() if (wk and wk.resets_at) else None
     theme = render_mod.theme_for_now()  # смяна на тема (ден/нощ) -> пълен redraw
     alarm_now = bool(render_mod.alarm_breaches(usage))  # аларма -> рамка/червен header
-    email = profile.email if profile else None  # email е в header-а (статичен регион)
+    # email + mismatch флаг са в header-а (статичен регион) -> смяна на акаунта ИЛИ
+    # поява/изчезване на разминаването (червено "!") иска пълен redraw
+    email = (profile.email, bool(profile.mismatch_email)) if profile else None
     need_full = (not getattr(lcd, "_dash_base", False)
                  or getattr(lcd, "_dash_day", None) != today
                  or getattr(lcd, "_dash_reset", "init") != reset_key
